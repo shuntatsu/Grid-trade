@@ -47,4 +47,6 @@ jobs:
       - name: Sync research environment
         run: uv sync --extra dev --extra research --frozen
       - name: Run research integration tests
-        run: uv run --frozen --extra dev --extra research pytest -m research -q tests/research
+        run: >-
+          uv run --frozen --extra dev --extra research pytest -m research -q
+          tests/research tests/integrations
