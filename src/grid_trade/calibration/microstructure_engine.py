@@ -80,16 +80,19 @@ class MicrostructureCalibrationState:
         if self.generation < 0:
             raise ValueError("generation must be non-negative")
         if self.generation == 0:
-            if any(
-                value is not None
-                for value in (
-                    self.config,
-                    self.source_id,
-                    self.instrument_id,
-                    self.last_timestamp,
-                    self.last_book,
+            if (
+                any(
+                    value is not None
+                    for value in (
+                        self.config,
+                        self.source_id,
+                        self.instrument_id,
+                        self.last_timestamp,
+                        self.last_book,
+                    )
                 )
-            ) or self.ofi_impact_state.samples:
+                or self.ofi_impact_state.samples
+            ):
                 raise ValueError("generation zero requires pristine microstructure state")
             return
 
@@ -198,7 +201,9 @@ def _component_quality(
     has_book_pair: bool,
     has_volatility: bool,
 ) -> Decimal:
-    intensity_quality = intensity.quality if intensity.ready and intensity.quality is not None else _ZERO
+    intensity_quality = (
+        intensity.quality if intensity.ready and intensity.quality is not None else _ZERO
+    )
     if ofi_impact.ready and ofi_impact.fit_r2 is not None:
         ofi_quality = min(_ONE, max(_ZERO, ofi_impact.fit_r2))
     else:
@@ -274,16 +279,10 @@ def update_microstructure_engine(
         config=config.execution_cost,
     )
 
-    current_ofi = (
-        normalized_ofi(state.last_book, book)
-        if state.last_book is not None
-        else None
-    )
+    current_ofi = normalized_ofi(state.last_book, book) if state.last_book is not None else None
     microprice_relative = microprice_displacement(book)
     predicted = (
-        predict_ofi_displacement(current_ofi, ofi_impact)
-        if current_ofi is not None
-        else None
+        predict_ofi_displacement(current_ofi, ofi_impact) if current_ofi is not None else None
     )
 
     quote_distance_scale: Decimal | None = None
