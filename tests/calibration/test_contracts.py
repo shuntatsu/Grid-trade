@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+import datetime as dt
 from decimal import Decimal
 
 import pytest
@@ -11,14 +11,14 @@ from grid_trade.calibration import (
 )
 
 
-def _timestamp() -> datetime:
-    return datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
+def _timestamp() -> dt.datetime:
+    return dt.datetime(2026, 8, 9, 12, 0, tzinfo=dt.UTC)
 
 
 def test_observation_requires_timezone_aware_timestamp() -> None:
     with pytest.raises(ValueError, match="timestamp"):
         CalibrationObservation(
-            timestamp=datetime(2026, 8, 9, 12, 0),
+            timestamp=dt.datetime(2026, 8, 9, 12, 0),
             source_id="fixture",
             instrument_id="AAA-PERP",
             mid=Decimal("100"),
