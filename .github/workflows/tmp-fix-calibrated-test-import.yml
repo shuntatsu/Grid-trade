@@ -1,0 +1,35 @@
+name: Temporary calibrated test import fix
+
+on:
+  push:
+    branches: [universal-calibration-strategy-integration]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: universal-calibration-strategy-integration
+      - name: Fix import and remove temporary workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/application/test_calibrated_adaptive_generalization.py')
+          text = path.read_text()
+          old = 'from grid_trade.calibration.intensity import IntensityBucket, IntensityCalibrationConfig\nfrom grid_trade.calibration.microstructure_contracts import (\n'
+          new = 'from grid_trade.calibration.intensity import IntensityCalibrationConfig\nfrom grid_trade.calibration.microstructure_contracts import (\n    IntensityBucket,\n'
+          if old not in text:
+              raise SystemExit('expected import block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git rm .github/workflows/tmp-fix-calibrated-test-import.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/application/test_calibrated_adaptive_generalization.py
+          git commit -m 'test: use canonical intensity bucket import'
+          git push origin HEAD:universal-calibration-strategy-integration
