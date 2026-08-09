@@ -2,9 +2,11 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from grid_trade.domain.market import MarketSnapshot
-from grid_trade.domain.orders import OrderSide
+from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 from grid_trade.strategy.adaptive_grid import (
+    AdaptiveGridDecision,
     AdaptiveGridPolicyConfig,
+    AdaptiveGridState,
     AdaptiveStage,
     decide_adaptive_grid,
     initialize_adaptive_grid,
@@ -88,7 +90,9 @@ def _config(stage: AdaptiveStage) -> AdaptiveGridPolicyConfig:
     )
 
 
-def _decision(stage: AdaptiveStage):
+def _decision(
+    stage: AdaptiveStage,
+) -> tuple[AdaptiveGridDecision, AdaptiveGridState, tuple[PassiveOrderIntent, ...]]:
     initial, _ = initialize_adaptive_grid(_snapshot(), AdaptiveSignals.neutral(), _config(stage))
     return decide_adaptive_grid(_snapshot(), _signals(), initial, _config(stage))
 
