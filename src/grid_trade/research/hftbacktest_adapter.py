@@ -1,12 +1,24 @@
 import csv
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 from importlib import import_module
 from importlib.metadata import version as distribution_version
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from grid_trade.datasets.canonical import (
+    BookSide,
+    BookVisibilityTracker,
+    CanonicalBookSnapshot,
+    CanonicalEventEnvelope,
+    CanonicalEventType,
+    CanonicalTrade,
+    TradeSide,
+    VisibilityChange,
+    canonical_event_sort_key,
+)
 from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 
 _HFTBACKTEST_VERSION = "2.4.4"
@@ -15,6 +27,11 @@ _HFTBACKTEST_VERSION = "2.4.4"
 def _require_finite_positive(value: Decimal, *, field: str) -> None:
     if not value.is_finite() or value <= 0:
         raise ValueError(f"{field} must be finite and positive")
+
+
+def _require_finite_non_negative(value: Decimal, *, field: str) -> None:
+    if not value.is_finite() or value < 0:
+        raise ValueError(f"{field} must be finite and non-negative")
 
 
 def _require_finite(value: Decimal, *, field: str) -> None:
@@ -28,6 +45,12 @@ def require_hftbacktest_runtime() -> None:
         raise RuntimeError(
             f"hftbacktest runtime mismatch: expected {_HFTBACKTEST_VERSION}, got {installed}",
         )
+
+
+class ReceiveTimestampMode(StrEnum):
+    OBSERVED = "observed"
+    SYNTHETIC = "synthetic"
+    MIXED = "mixed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +95,10 @@ class MicrostructureRow:
         if self.exch_ts < 0 or self.local_ts < 0:
             raise ValueError("timestamps must be non-negative")
         _require_finite_positive(self.price, field="price")
-        _require_finite_positive(self.quantity, field="quantity")
+        if self.kind in {"depth_bid", "depth_ask"}:
+            _require_finite_non_negative(self.quantity, field="quantity")
+        else:
+            _require_finite_positive(self.quantity, field="quantity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +121,17 @@ class MicrostructureFixture:
             raise ValueError("feed local timestamps must be monotonic")
         if exchange_times != sorted(exchange_times):
             raise ValueError("feed exchange timestamps must be monotonic")
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalHftReplayFixture:
+    fixture: MicrostructureFixture
+    receive_timestamp_mode: ReceiveTimestampMode
+    synthetic_receive_latency_ns: int
+
+    def __post_init__(self) -> None:
+        if self.synthetic_receive_latency_ns < 0:
+            raise ValueError("synthetic_receive_latency_ns must be non-negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +182,153 @@ def load_microstructure_fixture(path: Path) -> MicrostructureFixture:
             else:
                 feed.append(row)
     return MicrostructureFixture(snapshot=tuple(snapshot), feed=tuple(feed))
+
+
+def _canonical_local_timestamp(
+    event: CanonicalEventEnvelope,
+    *,
+    synthetic_receive_latency_ns: int,
+) -> tuple[int, bool]:
+    if event.local_receive_ts_ns is not None:
+        return event.local_receive_ts_ns, True
+    return event.exchange_ts_ns + synthetic_receive_latency_ns, False
+
+
+def _receive_timestamp_mode(*, observed_count: int, synthetic_count: int) -> ReceiveTimestampMode:
+    if observed_count and synthetic_count:
+        return ReceiveTimestampMode.MIXED
+    if observed_count:
+        return ReceiveTimestampMode.OBSERVED
+    return ReceiveTimestampMode.SYNTHETIC
+
+
+def _depth_kind(side: BookSide) -> str:
+    return "depth_bid" if side is BookSide.BID else "depth_ask"
+
+
+def canonical_events_to_hftbacktest_fixture(
+    events: tuple[CanonicalEventEnvelope, ...],
+    *,
+    synthetic_receive_latency_ns: int,
+) -> CanonicalHftReplayFixture:
+    if synthetic_receive_latency_ns < 0:
+        raise ValueError("synthetic_receive_latency_ns must be non-negative")
+    if not events:
+        raise ValueError("canonical replay requires an initial book snapshot")
+    if events != tuple(sorted(events, key=canonical_event_sort_key)):
+        raise ValueError("canonical replay events must be in deterministic canonical order")
+
+    instruments = {event.instrument for event in events}
+    if len(instruments) != 1:
+        raise ValueError("canonical replay requires exactly one instrument")
+
+    snapshot_rows: list[MicrostructureRow] = []
+    feed_rows: list[MicrostructureRow] = []
+    tracker = BookVisibilityTracker()
+    visible_quantities: dict[tuple[BookSide, Decimal], Decimal] = {}
+    initial_book_seen = False
+    observed_count = 0
+    synthetic_count = 0
+
+    for event in events:
+        if event.event_type is CanonicalEventType.FUNDING_REFERENCE:
+            continue
+
+        local_ts, observed = _canonical_local_timestamp(
+            event,
+            synthetic_receive_latency_ns=synthetic_receive_latency_ns,
+        )
+        if observed:
+            observed_count += 1
+        else:
+            synthetic_count += 1
+
+        if event.event_type is CanonicalEventType.TRADE:
+            if not initial_book_seen:
+                raise ValueError("canonical replay requires an initial book snapshot before trades")
+            trade = event.payload
+            if not isinstance(trade, CanonicalTrade):
+                raise TypeError("validated trade event must carry CanonicalTrade payload")
+            feed_rows.append(
+                MicrostructureRow(
+                    kind="trade_buy" if trade.side is TradeSide.BUY else "trade_sell",
+                    exch_ts=event.exchange_ts_ns,
+                    local_ts=local_ts,
+                    price=trade.price,
+                    quantity=trade.quantity,
+                )
+            )
+            continue
+
+        book = event.payload
+        if not isinstance(book, CanonicalBookSnapshot):
+            raise TypeError("validated book event must carry CanonicalBookSnapshot payload")
+
+        if not initial_book_seen:
+            initial_book_seen = True
+            for side, levels in ((BookSide.BID, book.bids), (BookSide.ASK, book.asks)):
+                kind = "snapshot_bid" if side is BookSide.BID else "snapshot_ask"
+                for level in levels:
+                    snapshot_rows.append(
+                        MicrostructureRow(
+                            kind=kind,
+                            exch_ts=event.exchange_ts_ns,
+                            local_ts=local_ts,
+                            price=level.price,
+                            quantity=level.quantity,
+                        )
+                    )
+                    visible_quantities[(side, level.price)] = level.quantity
+            tracker.apply(book)
+            continue
+
+        for update in tracker.apply(book):
+            key = (update.side, update.price)
+            if update.change is VisibilityChange.VISIBILITY_LOST:
+                visible_quantities.pop(key, None)
+                continue
+            if update.change is VisibilityChange.CONFIRMED_ZERO:
+                if key in visible_quantities:
+                    feed_rows.append(
+                        MicrostructureRow(
+                            kind=_depth_kind(update.side),
+                            exch_ts=event.exchange_ts_ns,
+                            local_ts=local_ts,
+                            price=update.price,
+                            quantity=Decimal(0),
+                        )
+                    )
+                    visible_quantities.pop(key, None)
+                continue
+            if update.quantity is None:
+                raise ValueError("visible depth update must carry quantity")
+            if visible_quantities.get(key) == update.quantity:
+                continue
+            feed_rows.append(
+                MicrostructureRow(
+                    kind=_depth_kind(update.side),
+                    exch_ts=event.exchange_ts_ns,
+                    local_ts=local_ts,
+                    price=update.price,
+                    quantity=update.quantity,
+                )
+            )
+            visible_quantities[key] = update.quantity
+
+    if not initial_book_seen:
+        raise ValueError("canonical replay requires an initial book snapshot")
+    if not feed_rows:
+        raise ValueError("canonical replay requires at least one feed event after the initial snapshot")
+
+    fixture = MicrostructureFixture(snapshot=tuple(snapshot_rows), feed=tuple(feed_rows))
+    return CanonicalHftReplayFixture(
+        fixture=fixture,
+        receive_timestamp_mode=_receive_timestamp_mode(
+            observed_count=observed_count,
+            synthetic_count=synthetic_count,
+        ),
+        synthetic_receive_latency_ns=synthetic_receive_latency_ns,
+    )
 
 
 def _runtime_modules() -> tuple[ModuleType, ModuleType, ModuleType]:
@@ -364,11 +548,14 @@ def replay_passive_orders(
 
 
 __all__ = [
+    "CanonicalHftReplayFixture",
     "HftReplayConfig",
     "MicrostructureFixture",
     "MicrostructureRow",
+    "ReceiveTimestampMode",
     "ReplayFill",
     "ReplaySummary",
+    "canonical_events_to_hftbacktest_fixture",
     "load_microstructure_fixture",
     "replay_passive_orders",
     "require_hftbacktest_runtime",
