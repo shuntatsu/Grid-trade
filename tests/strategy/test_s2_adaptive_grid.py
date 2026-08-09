@@ -26,7 +26,12 @@ def _snapshot(*, mid: str = "100", vol: str = "0.002") -> MarketSnapshot:
     )
 
 
-def _grid_config(*, levels: int = 3, spacing_bps: int = 20, tick: str = "0.1") -> FixedLongGridConfig:
+def _grid_config(
+    *,
+    levels: int = 3,
+    spacing_bps: int = 20,
+    tick: str = "0.1",
+) -> FixedLongGridConfig:
     return FixedLongGridConfig(
         levels=levels,
         spacing_bps=spacing_bps,
