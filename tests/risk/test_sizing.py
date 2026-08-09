@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -40,6 +40,24 @@ def test_quantity_capacity_scales_inverse_to_price() -> None:
     assert high.q_notional == low.q_notional / 2
     assert high.q_margin == low.q_margin / 2
     assert high.q_volatility == low.q_volatility / 2
+
+
+def test_sizing_is_independent_of_ambient_decimal_precision() -> None:
+    inputs = RiskSizingInput(
+        equity=Decimal("1234.567"),
+        reference_price=Decimal("137.29"),
+        volatility_scale=Decimal("0.0173"),
+        max_margin_notional=Decimal("987.654"),
+        venue_max_quantity=Decimal("12.3456"),
+    )
+    with localcontext() as context:
+        context.prec = 10
+        low_precision = derive_inventory_capacity(inputs, _config())
+    with localcontext() as context:
+        context.prec = 50
+        high_precision = derive_inventory_capacity(inputs, _config())
+
+    assert low_precision == high_precision
 
 
 def test_most_conservative_constraint_binds() -> None:
