@@ -16,6 +16,11 @@ from grid_trade.calibration.funding import (
     FundingEstimate,
     update_funding_calibration,
 )
+from grid_trade.calibration.intensity import (
+    IntensityCalibrationConfig,
+    IntensityEstimate,
+    estimate_arrival_intensity,
+)
 from grid_trade.calibration.microstructure_contracts import (
     IntensityBucket,
     MarkoutSide,
@@ -48,6 +53,8 @@ __all__ = [
     "FundingCalibrationState",
     "FundingEstimate",
     "IntensityBucket",
+    "IntensityCalibrationConfig",
+    "IntensityEstimate",
     "MarkoutSide",
     "MaturedMarkout",
     "MicrostructureReadiness",
@@ -58,6 +65,7 @@ __all__ = [
     "TrendCalibrationConfig",
     "TrendEstimate",
     "VolatilityEstimate",
+    "estimate_arrival_intensity",
     "estimate_normalized_trend",
     "update_calibration_engine",
     "update_funding_calibration",
