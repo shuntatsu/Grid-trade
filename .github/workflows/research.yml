@@ -2,7 +2,7 @@ name: Research Integration
 
 on:
   push:
-    branches: [grid-core]
+    branches: [grid-core, s1-dynamic-center]
     paths:
       - "src/grid_trade/research/**"
       - "src/grid_trade/integrations/**"
