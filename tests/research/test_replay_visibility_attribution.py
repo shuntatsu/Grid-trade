@@ -1,3 +1,4 @@
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -11,9 +12,10 @@ from grid_trade.datasets.canonical import (
 from grid_trade.domain.orders import OrderSide
 from grid_trade.research.replay_attribution import (
     MarketImpactEligibilityConfig,
+    OrderLiquidityEligibility,
+    assess_order_liquidity_eligibility,
     first_order_visibility_loss_ns,
     summarize_order_liquidity,
-    assess_order_liquidity_eligibility,
 )
 
 pytestmark = pytest.mark.research
@@ -48,7 +50,7 @@ def _book(
     )
 
 
-def _eligibility(*, quantity: str, same_level: str, top_n: str):
+def _eligibility(*, quantity: str, same_level: str, top_n: str) -> OrderLiquidityEligibility:
     return assess_order_liquidity_eligibility(
         order_price=Decimal("100"),
         order_quantity=Decimal(quantity),
@@ -86,24 +88,19 @@ def test_first_visibility_loss_is_recorded_without_treating_confirmed_zero_as_lo
 def test_visibility_loss_for_sell_uses_ask_side() -> None:
     events = (
         _book(100, bids=("100", "99", "98"), asks=("101", "102", "103"), ordinal=0),
-        _book(200, bids=("102", "101", "100"), asks=("103", "104", "105"), ordinal=1),
+        _book(200, bids=("96", "95", "94"), asks=("99", "100", "101"), ordinal=1),
     )
 
     assert first_order_visibility_loss_ns(
         events,
         side=OrderSide.SELL,
-        price=Decimal("105"),
-    ) is None
-    assert first_order_visibility_loss_ns(
-        events,
-        side=OrderSide.SELL,
         price=Decimal("103"),
-    ) is None
+    ) == 200
     assert first_order_visibility_loss_ns(
         events,
         side=OrderSide.SELL,
-        price=Decimal("102"),
-    ) == 200
+        price=Decimal("101"),
+    ) is None
 
 
 def test_liquidity_summary_records_max_q95_and_earliest_visibility_boundary() -> None:
@@ -114,9 +111,9 @@ def test_liquidity_summary_records_max_q95_and_earliest_visibility_boundary() ->
         _eligibility(quantity="4", same_level="10", top_n="5000"),
     )
     decisions = (
-        decisions[0].with_visibility_boundary(900),
+        replace(decisions[0], visibility_boundary_ts_ns=900),
         decisions[1],
-        decisions[2].with_visibility_boundary(700),
+        replace(decisions[2], visibility_boundary_ts_ns=700),
         decisions[3],
     )
 
