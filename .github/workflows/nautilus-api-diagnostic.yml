@@ -19,25 +19,50 @@ jobs:
         run: |
           uv run --frozen --extra research python - <<'PY'
           import importlib
+          import inspect
           import pkgutil
-          import nautilus_trader.common as common
-          import nautilus_trader.model as model
-          print('COMMON_ATTRS', [n for n in dir(common) if 'Clock' in n or 'Order' in n])
-          print('MODEL_ATTRS', [n for n in dir(model) if n in {'OrderSide','TimeInForce','InstrumentId','Price','Quantity','StrategyId','TraderId'}])
-          for root in ('nautilus_trader.common', 'nautilus_trader.model'):
-              mod = importlib.import_module(root)
-              print('SUBMODULES', root, sorted(m.name for m in pkgutil.iter_modules(mod.__path__)))
-          candidates = [
-              'nautilus_trader.common.clock',
+          import nautilus_trader
+
+          targets = [
               'nautilus_trader.common.factories',
+              'nautilus_trader.core',
+              'nautilus_trader.core.nautilus_pyo3',
               'nautilus_trader.model.enums',
               'nautilus_trader.model.identifiers',
               'nautilus_trader.model.objects',
           ]
-          for name in candidates:
+          for name in targets:
               try:
                   mod = importlib.import_module(name)
-                  print('CANDIDATE', name, [n for n in dir(mod) if n in {'Clock','OrderFactory','OrderSide','TimeInForce','InstrumentId','Price','Quantity','StrategyId','TraderId'}])
+                  names = [n for n in dir(mod) if n in {
+                      'Clock','TestClock','LiveClock','OrderFactory','OrderSide','TimeInForce',
+                      'InstrumentId','Price','Quantity','StrategyId','TraderId'
+                  }]
+                  print('TARGET', name, names)
+                  for symbol in names:
+                      obj = getattr(mod, symbol)
+                      try:
+                          print('SIGNATURE', name, symbol, inspect.signature(obj))
+                      except Exception as exc:
+                          print('SIGNATURE_ERROR', name, symbol, type(exc).__name__, str(exc))
+                      print('DOC', name, symbol, repr(getattr(obj, '__doc__', None))[:1000])
               except Exception as exc:
-                  print('CANDIDATE_ERROR', name, type(exc).__name__, str(exc))
+                  print('TARGET_ERROR', name, type(exc).__name__, str(exc))
+
+          core = importlib.import_module('nautilus_trader.core')
+          if hasattr(core, '__path__'):
+              print('CORE_SUBMODULES', sorted(m.name for m in pkgutil.iter_modules(core.__path__)))
+
+          print('WALK_CLOCKS')
+          for module_info in pkgutil.walk_packages(nautilus_trader.__path__, 'nautilus_trader.'):
+              name = module_info.name
+              if not any(token in name for token in ('.core', '.common')):
+                  continue
+              try:
+                  mod = importlib.import_module(name)
+              except Exception:
+                  continue
+              clocks = [n for n in dir(mod) if n in {'Clock','TestClock','LiveClock'}]
+              if clocks:
+                  print('CLOCK_MODULE', name, clocks)
           PY
