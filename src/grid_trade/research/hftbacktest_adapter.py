@@ -59,7 +59,15 @@ class MicrostructureRow:
     quantity: Decimal
 
     def __post_init__(self) -> None:
-        if self.kind not in {"snapshot_bid", "snapshot_ask", "trade_buy", "trade_sell"}:
+        supported = {
+            "snapshot_bid",
+            "snapshot_ask",
+            "depth_bid",
+            "depth_ask",
+            "trade_buy",
+            "trade_sell",
+        }
+        if self.kind not in supported:
             raise ValueError(f"unsupported microstructure kind: {self.kind}")
         if self.exch_ts < 0 or self.local_ts < 0:
             raise ValueError("timestamps must be non-negative")
@@ -131,6 +139,10 @@ def _event_flags(hft: ModuleType, row: MicrostructureRow) -> int:
         return int(hft.DEPTH_SNAPSHOT_EVENT | hft.BUY_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
     if row.kind == "snapshot_ask":
         return int(hft.DEPTH_SNAPSHOT_EVENT | hft.SELL_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
+    if row.kind == "depth_bid":
+        return int(hft.DEPTH_EVENT | hft.BUY_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
+    if row.kind == "depth_ask":
+        return int(hft.DEPTH_EVENT | hft.SELL_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
     if row.kind == "trade_buy":
         return int(hft.TRADE_EVENT | hft.BUY_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
     if row.kind == "trade_sell":
@@ -225,6 +237,12 @@ def replay_passive_orders(
     fills: list[ReplayFill] = []
 
     try:
+        bootstrap_result = int(backtest.wait_next_feed(False, int(hft.UNTIL_END_OF_DATA)))
+        if bootstrap_result != 2:
+            raise RuntimeError(
+                f"expected one market-feed bootstrap event, got {bootstrap_result}",
+            )
+
         for numeric_order_id, intent in enumerate(intents, start=1):
             numeric_to_client[numeric_order_id] = intent.client_order_id
             _submit_order(
@@ -282,8 +300,8 @@ def replay_passive_orders(
             open_order_count=open_order_count,
         )
     finally:
-        close_result = int(backtest.close())
-        if close_result != 0:
+        close_result = backtest.close()
+        if close_result not in {None, 0}:
             raise RuntimeError(f"hftbacktest close failed: {close_result}")
 
 
