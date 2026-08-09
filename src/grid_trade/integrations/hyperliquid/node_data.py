@@ -24,7 +24,9 @@ def raw_object_ref_from_node_bytes(
     source_end_ns: int | None = None,
 ) -> RawObjectRef:
     if not source_locator.startswith(_NODE_DATA_PREFIX):
-        raise ValueError("node-data source locator must use the official hl-mainnet-node-data bucket")
+        raise ValueError(
+            "node-data source locator must use the official hl-mainnet-node-data bucket"
+        )
     if not payload:
         raise ValueError("node-data payload must be non-empty")
 
