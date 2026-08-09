@@ -50,6 +50,7 @@ class DatasetManifest:
     acceptance: DatasetAcceptance
     created_at: datetime
     audit_digest: str | None = None
+    required_funding_timestamps_ns: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         _require_non_empty(self.instrument, field="instrument")
@@ -62,6 +63,12 @@ class DatasetManifest:
         _require_utc(self.created_at, field="created_at")
         if self.audit_digest is not None and _SHA256_RE.fullmatch(self.audit_digest) is None:
             raise ValueError("audit_digest must be 64 lowercase hexadecimal characters")
+        if any(timestamp < 0 for timestamp in self.required_funding_timestamps_ns):
+            raise ValueError("required funding timestamps must be non-negative")
+        if self.required_funding_timestamps_ns != tuple(
+            sorted(set(self.required_funding_timestamps_ns))
+        ):
+            raise ValueError("required funding timestamps must be sorted and unique")
         if self.acceptance is not DatasetAcceptance.REJECTED and not self.raw_objects:
             raise ValueError("accepted dataset manifest requires at least one raw object")
         if any(raw.identity.instrument != self.instrument for raw in self.raw_objects):
