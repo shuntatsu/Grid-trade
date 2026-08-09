@@ -16,6 +16,7 @@ class PassivePolicyTransition[StateT, DecisionT]:
     desired_ladder: tuple[PassiveOrderIntent, ...]
     risk_decision: RiskDecision
     reconciliation: ReconciliationPlan
+    candidate_accepted: bool
 
 
 def _prospective_risk_state(
@@ -54,12 +55,33 @@ def _assess_desired_ladder(
     )
 
 
+def _risk_accepts_exact_ladder(
+    risk_decision: RiskDecision,
+    proposed_ladder: tuple[PassiveOrderIntent, ...],
+    filtered_ladder: tuple[PassiveOrderIntent, ...],
+) -> bool:
+    if filtered_ladder != proposed_ladder:
+        return False
+    if risk_decision.allow_new_risk:
+        return True
+    return (
+        bool(proposed_ladder)
+        and not risk_decision.cancel_all_passive
+        and not risk_decision.target_flat
+        and all(order.reduce_only for order in proposed_ladder)
+    )
+
+
 def _accepted_ladder(
     risk_decision: RiskDecision,
     proposed_ladder: tuple[PassiveOrderIntent, ...],
     filtered_ladder: tuple[PassiveOrderIntent, ...],
 ) -> tuple[bool, tuple[PassiveOrderIntent, ...]]:
-    accepted = risk_decision.allow_new_risk and filtered_ladder == proposed_ladder
+    accepted = _risk_accepts_exact_ladder(
+        risk_decision,
+        proposed_ladder,
+        filtered_ladder,
+    )
     if accepted:
         return True, proposed_ladder
     return False, tuple(order for order in filtered_ladder if order.reduce_only)
@@ -102,6 +124,7 @@ def transition_passive_policy[StateT, DecisionT](
         desired_ladder=desired_ladder,
         risk_decision=risk_decision,
         reconciliation=reconciliation,
+        candidate_accepted=accepted,
     )
 
 
@@ -121,10 +144,10 @@ def continue_passive_policy_reconciliation[StateT, DecisionT](
         working_orders=working_orders,
         proposed_ladder=transition.desired_ladder,
     )
-    accepted = (
-        transition.risk_decision.allow_new_risk
-        and risk_decision.allow_new_risk
-        and filtered_ladder == transition.desired_ladder
+    accepted = transition.candidate_accepted and _risk_accepts_exact_ladder(
+        risk_decision,
+        transition.desired_ladder,
+        filtered_ladder,
     )
     desired_ladder = (
         transition.desired_ladder
@@ -149,6 +172,7 @@ def continue_passive_policy_reconciliation[StateT, DecisionT](
         desired_ladder=desired_ladder,
         risk_decision=risk_decision,
         reconciliation=reconciliation,
+        candidate_accepted=accepted,
     )
 
 
