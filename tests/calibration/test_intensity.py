@@ -46,7 +46,7 @@ def test_zero_arrival_tail_remains_informative() -> None:
     base = _synthetic_buckets()
     without_tail = estimate_arrival_intensity(base, _config())
     with_tail = estimate_arrival_intensity(
-        base + (IntensityBucket(Decimal("4"), Decimal("500"), 0),),
+        (*base, IntensityBucket(Decimal("4"), Decimal("500"), 0)),
         _config(),
     )
 
