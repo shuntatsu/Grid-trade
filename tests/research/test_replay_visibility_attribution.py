@@ -64,12 +64,12 @@ def _eligibility(*, quantity: str, same_level: str, top_n: str) -> OrderLiquidit
     )
 
 
-def test_first_visibility_loss_is_recorded_without_treating_confirmed_zero_as_loss() -> None:
+def test_first_visibility_loss_is_recorded_after_confirmed_zero_leaves_range() -> None:
     events = (
         _book(100, bids=("100", "99", "98"), asks=("101", "102", "103"), ordinal=0),
         # 99 disappears but remains inside the newly observable bid range: confirmed zero.
         _book(200, bids=("100", "98", "97"), asks=("101", "102", "103"), ordinal=1),
-        # 98 is now outside the newly observable bid range: visibility is lost.
+        # 99 and 98 are now outside the newly observable bid range: visibility is lost.
         _book(300, bids=("102", "101", "100"), asks=("103", "104", "105"), ordinal=2),
     )
 
@@ -77,7 +77,7 @@ def test_first_visibility_loss_is_recorded_without_treating_confirmed_zero_as_lo
         events,
         side=OrderSide.BUY,
         price=Decimal("99"),
-    ) is None
+    ) == 300
     assert first_order_visibility_loss_ns(
         events,
         side=OrderSide.BUY,
