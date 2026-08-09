@@ -45,6 +45,13 @@ def _previous_state(decision: CenterDecision) -> DynamicCenterState:
     )
 
 
+def _effective_state(decision: CenterDecision) -> DynamicCenterState:
+    return DynamicCenterState(
+        center=decision.effective_center,
+        generation=decision.effective_generation,
+    )
+
+
 def _assess_desired_ladder(
     *,
     snapshot: MarketSnapshot,
@@ -92,19 +99,19 @@ def transition_dynamic_center(
 
     accepted = risk_decision.allow_new_risk and filtered_ladder == proposed_ladder
     if accepted:
-        next_state = DynamicCenterState(
-            center=decision.effective_center,
-            generation=decision.effective_generation,
-        )
         desired_ladder = proposed_ladder
     else:
-        next_state = state
         desired_ladder = tuple(order for order in filtered_ladder if order.reduce_only)
 
     reconciliation = reconcile_passive_orders(
         desired=desired_ladder,
         working=working_orders,
     )
+    if accepted and not reconciliation.cancel:
+        next_state = _effective_state(decision)
+    else:
+        next_state = state
+
     return DynamicCenterTransition(
         decision=decision,
         next_state=next_state,
@@ -137,16 +144,19 @@ def continue_dynamic_center_reconciliation(
     )
 
     if accepted:
-        next_state = transition.next_state
         desired_ladder = transition.desired_ladder
     else:
-        next_state = _previous_state(transition.decision)
         desired_ladder = tuple(order for order in filtered_ladder if order.reduce_only)
 
     reconciliation = reconcile_passive_orders(
         desired=desired_ladder,
         working=working_orders,
     )
+    if accepted and not reconciliation.cancel:
+        next_state = _effective_state(transition.decision)
+    else:
+        next_state = _previous_state(transition.decision)
+
     return DynamicCenterTransition(
         decision=transition.decision,
         next_state=next_state,
