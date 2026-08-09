@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from hypothesis import given, strategies as st
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from grid_trade.domain.market import MarketSnapshot
 
