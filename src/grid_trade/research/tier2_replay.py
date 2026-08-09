@@ -20,7 +20,7 @@ from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 from grid_trade.domain.risk import RiskDecision, RiskLimits, RiskState
 from grid_trade.evidence.events import EvidenceEvent, EvidenceKind
-from grid_trade.evidence.ledger import EvidenceLedger
+from grid_trade.evidence.ledger import evidence_digest as compute_evidence_digest
 from grid_trade.research.hftbacktest_adapter import (
     HftReplayConfig,
     ReplaySummary,
@@ -57,7 +57,7 @@ def _canonical_value(value: object) -> Any:
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, datetime):
-        return value.isoformat()
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     if is_dataclass(value) and not isinstance(value, type):
         return {field.name: _canonical_value(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, tuple | list):
@@ -148,12 +148,13 @@ def _validate_events(
     if any(event.instrument != manifest.dataset.instrument for event in events):
         raise ValueError("canonical event instrument must match the dataset manifest")
     for event in events:
-        if event.event_type is CanonicalEventType.BOOK_SNAPSHOT:
-            if not isinstance(event.payload, CanonicalBookSnapshot):
-                raise TypeError("validated book event must carry CanonicalBookSnapshot payload")
-            if not event.payload.bids or not event.payload.asks:
-                raise ValueError("Tier-2 replay requires two-sided initial visible depth")
-            return event
+        if event.event_type is not CanonicalEventType.BOOK_SNAPSHOT:
+            continue
+        if not isinstance(event.payload, CanonicalBookSnapshot):
+            raise TypeError("validated book event must carry CanonicalBookSnapshot payload")
+        if not event.payload.bids or not event.payload.asks:
+            raise ValueError("Tier-2 replay requires two-sided initial visible depth")
+        return event
     raise ValueError("Tier-2 replay requires an initial book snapshot")
 
 
@@ -168,12 +169,11 @@ def _market_snapshot(
     if not isinstance(book, CanonicalBookSnapshot):
         raise TypeError("initial event must carry CanonicalBookSnapshot payload")
     return MarketSnapshot(
-        instrument=initial_event.instrument,
         timestamp=_datetime_from_ns(initial_event.exchange_ts_ns),
         best_bid=book.bids[0].price,
         best_ask=book.asks[0].price,
-        position=starting_position,
         realized_volatility=realized_volatility,
+        position_quantity=starting_position,
         source_id=f"tier2:{manifest.dataset.audit_digest}",
     )
 
@@ -333,10 +333,24 @@ def _order_payload(order: PassiveOrderIntent) -> dict[str, object]:
         "client_order_id": order.client_order_id,
         "generation": order.generation,
         "level": order.level,
-        "side": order.side,
+        "side": order.side.value,
         "price": order.price,
         "quantity": order.quantity,
         "reduce_only": order.reduce_only,
+    }
+
+
+def _eligibility_payload(
+    eligibility: OrderLiquidityEligibility,
+) -> dict[str, object]:
+    return {
+        "eligible": eligibility.eligible,
+        "reason": eligibility.reason,
+        "order_notional": eligibility.order_notional,
+        "visible_same_level_quantity": eligibility.visible_same_level_quantity,
+        "visible_top_n_notional": eligibility.visible_top_n_notional,
+        "same_level_participation": eligibility.same_level_participation,
+        "top_n_participation": eligibility.top_n_participation,
     }
 
 
@@ -358,15 +372,13 @@ def _evidence(
     maker_fee_cash_flow: Decimal,
     ending_position: Decimal,
 ) -> tuple[EvidenceEvent, ...]:
-    ledger = EvidenceLedger()
-    decision_time = _datetime_from_ns(initial_event.exchange_ts_ns)
-    ledger.append(
-        EvidenceEvent(
-            timestamp=decision_time,
-            kind=EvidenceKind.RISK_DECISION,
-            event_id=f"{run_id}:risk",
-            payload={
-                "run_id": run_id,
+    decision_timestamp = _datetime_from_ns(initial_event.exchange_ts_ns)
+    pending: list[tuple[datetime, int, EvidenceKind, dict[str, object]]] = [
+        (
+            decision_timestamp,
+            0,
+            EvidenceKind.RISK_DECISION,
+            {
                 "decision_digest": decision_digest,
                 "allow_new_risk": risk_decision.allow_new_risk,
                 "cancel_all_passive": risk_decision.cancel_all_passive,
@@ -375,29 +387,26 @@ def _evidence(
                 "candidate_orders": tuple(_order_payload(order) for order in candidate_orders),
                 "risk_orders": tuple(_order_payload(order) for order in risk_orders),
             },
-        )
-    )
-    ledger.append(
-        EvidenceEvent(
-            timestamp=decision_time,
-            kind=EvidenceKind.DESIRED_LADDER,
-            event_id=f"{run_id}:eligible-ladder",
-            payload={
-                "run_id": run_id,
+        ),
+        (
+            decision_timestamp,
+            1,
+            EvidenceKind.DESIRED_LADDER,
+            {
                 "eligible_orders": tuple(_order_payload(order) for order in eligible_orders),
-                "eligibility": eligibility,
-                "market_impact_config": manifest.market_impact,
+                "eligibility": tuple(_eligibility_payload(item) for item in eligibility),
+                "market_impact_config": _canonical_value(manifest.market_impact),
             },
-        )
-    )
+        ),
+    ]
+
     for index, fill in enumerate(replay_summary.fills):
-        ledger.append(
-            EvidenceEvent(
-                timestamp=_datetime_from_ns(fill.timestamp_ns),
-                kind=EvidenceKind.FILL,
-                event_id=f"{run_id}:fill:{index:06d}",
-                payload={
-                    "run_id": run_id,
+        pending.append(
+            (
+                _datetime_from_ns(fill.timestamp_ns),
+                10 + index,
+                EvidenceKind.FILL,
+                {
                     "client_order_id": fill.client_order_id,
                     "timestamp_ns": fill.timestamp_ns,
                     "price": fill.price,
@@ -407,13 +416,12 @@ def _evidence(
             )
         )
     for index, flow in enumerate(funding_flows):
-        ledger.append(
-            EvidenceEvent(
-                timestamp=_datetime_from_ns(flow.timestamp_ns),
-                kind=EvidenceKind.FUNDING_DECISION,
-                event_id=f"{run_id}:funding:{index:06d}",
-                payload={
-                    "run_id": run_id,
+        pending.append(
+            (
+                _datetime_from_ns(flow.timestamp_ns),
+                1_000 + index,
+                EvidenceKind.FUNDING_DECISION,
+                {
                     "timestamp_ns": flow.timestamp_ns,
                     "position": flow.position,
                     "funding_rate": flow.funding_rate,
@@ -425,17 +433,23 @@ def _evidence(
 
     manifest_digest = sha256(canonical_manifest_bytes(manifest.dataset)).hexdigest()
     raw_hashes = tuple(raw.identity.sha256 for raw in manifest.dataset.raw_objects)
-    summary_timestamp_ns = max(event.exchange_ts_ns for event in events)
-    ledger.append(
-        EvidenceEvent(
-            timestamp=_datetime_from_ns(summary_timestamp_ns),
-            kind=EvidenceKind.RUN_SUMMARY,
-            event_id=f"{run_id}:summary",
-            payload={
-                "run_id": run_id,
+    summary_timestamp_ns = max(
+        [
+            *(event.exchange_ts_ns for event in events),
+            *(fill.timestamp_ns for fill in replay_summary.fills),
+            *(flow.timestamp_ns for flow in funding_flows),
+        ],
+        default=initial_event.exchange_ts_ns,
+    )
+    pending.append(
+        (
+            _datetime_from_ns(summary_timestamp_ns),
+            10_000,
+            EvidenceKind.RUN_SUMMARY,
+            {
                 "dataset": {
                     "manifest_digest": manifest_digest,
-                    "acceptance": manifest.dataset.acceptance,
+                    "acceptance": manifest.dataset.acceptance.value,
                     "audit_digest": manifest.dataset.audit_digest,
                     "raw_object_sha256": raw_hashes,
                     "normalization_schema_version": manifest.dataset.normalization_schema_version,
@@ -450,7 +464,7 @@ def _evidence(
                     "queue_model": _QUEUE_MODEL_IDENTITY,
                     "receive_timestamp_mode": converted_receive_mode,
                     "synthetic_receive_latency_ns": manifest.synthetic_receive_latency_ns,
-                    "hft_config": manifest.hft,
+                    "hft_config": _canonical_value(manifest.hft),
                 },
                 "candidate_order_count": len(candidate_orders),
                 "risk_accepted_order_count": len(risk_orders),
@@ -471,7 +485,20 @@ def _evidence(
             },
         )
     )
-    return ledger.snapshot()
+
+    pending.sort(key=lambda item: (item[0], item[1]))
+    evidence: list[EvidenceEvent] = []
+    for timestamp, _, kind, payload in pending:
+        evidence.append(
+            EvidenceEvent.create(
+                run_id=run_id,
+                sequence=len(evidence),
+                timestamp=timestamp,
+                kind=kind,
+                payload=payload,
+            )
+        )
+    return tuple(evidence)
 
 
 def run_tier2_replay(
@@ -492,11 +519,11 @@ def run_tier2_replay(
     if risk_state.open_order_count != 0:
         raise ValueError("Tier-2 replay requires a clean initial working-order state")
 
+    initial_event = _validate_events(manifest, events)
     converted = canonical_events_to_hftbacktest_fixture(
         events,
         synthetic_receive_latency_ns=manifest.synthetic_receive_latency_ns,
     )
-    initial_event = _validate_events(manifest, events)
     market_snapshot = _market_snapshot(
         initial_event=initial_event,
         manifest=manifest,
@@ -507,7 +534,7 @@ def run_tier2_replay(
         decision="tier2-pre-risk-candidate",
         previous_state=0,
         candidate_state=1,
-        market_snapshot=market_snapshot,
+        snapshot=market_snapshot,
         risk_limits=risk_limits,
         risk_state=risk_state,
         working_orders=(),
@@ -530,19 +557,15 @@ def run_tier2_replay(
         order for order, decision in zip(risk_orders, eligibility, strict=True) if decision.eligible
     )
 
-    if eligible_orders:
-        replay_summary = replay_passive_orders(
-            converted.fixture,
-            eligible_orders,
-            manifest.hft,
-        )
-    else:
-        replay_summary = ReplaySummary(
+    replay_summary = (
+        replay_passive_orders(converted.fixture, eligible_orders, manifest.hft)
+        if eligible_orders
+        else ReplaySummary(
             fills=(),
             ending_position=Decimal(0),
             open_order_count=0,
         )
-
+    )
     side_by_client_id = {order.client_order_id: order.side for order in eligible_orders}
     funding_flows = _funding_cash_flows(
         events=events,
@@ -594,12 +617,10 @@ def run_tier2_replay(
         maker_fee_cash_flow=maker_fee_cash_flow,
         ending_position=ending_position,
     )
-    ledger = EvidenceLedger()
-    ledger.extend(evidence_events)
 
     return Tier2ReplayResult(
         evidence_events=evidence_events,
-        evidence_digest=ledger.digest(),
+        evidence_digest=compute_evidence_digest(evidence_events),
         decision_digest=decision_digest,
         risk_decision=policy.risk_decision,
         candidate_order_count=len(candidate_orders),
