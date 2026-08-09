@@ -59,6 +59,12 @@ from grid_trade.calibration.trend import (
     TrendEstimate,
     estimate_normalized_trend,
 )
+from grid_trade.calibration.universal_engine import (
+    UniversalCalibrationConfig,
+    UniversalCalibrationState,
+    UniversalCalibrationUpdate,
+    update_universal_calibration,
+)
 from grid_trade.calibration.volatility import (
     RobustVolatilityConfig,
     RobustVolatilityState,
@@ -98,6 +104,9 @@ __all__ = [
     "TopOfBookObservation",
     "TrendCalibrationConfig",
     "TrendEstimate",
+    "UniversalCalibrationConfig",
+    "UniversalCalibrationState",
+    "UniversalCalibrationUpdate",
     "VolatilityEstimate",
     "compute_ofi",
     "estimate_arrival_intensity",
@@ -114,4 +123,5 @@ __all__ = [
     "update_microstructure_engine",
     "update_ofi_impact",
     "update_robust_volatility",
+    "update_universal_calibration",
 ]
