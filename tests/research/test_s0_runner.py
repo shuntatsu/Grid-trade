@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from grid_trade.domain.market import MarketSnapshot
-from grid_trade.domain.risk import RiskLimits, RiskState
+from grid_trade.domain.risk import RiskLimits, RiskReason, RiskState
 from grid_trade.evidence.events import PnLBreakdown
 from grid_trade.research.hftbacktest_adapter import HftReplayConfig, load_microstructure_fixture
 from grid_trade.research.s0_runner import S0RunResult, run_s0
@@ -87,6 +87,7 @@ def test_same_s0_scenario_is_exactly_deterministic() -> None:
     assert left == right
     assert left.deterministic
     assert left.risk_passed
+    assert left.risk_reasons == ()
     assert left.milestone_passed
     assert [order.price for order in left.desired_ladder] == [
         Decimal("99.0"),
@@ -113,6 +114,7 @@ def test_stale_market_state_fails_risk_gate_and_emits_no_passive_risk() -> None:
     result = _run(snapshot=stale_snapshot)
 
     assert not result.risk_passed
+    assert RiskReason.STALE_DATA in result.risk_reasons
     assert not result.milestone_passed
     assert result.desired_ladder == ()
     assert result.reconciliation.submit == ()
@@ -124,6 +126,17 @@ def test_position_at_limit_blocks_new_grid_without_claiming_success() -> None:
     result = _run(snapshot=_snapshot(position="1"))
 
     assert not result.risk_passed
+    assert RiskReason.MAX_POSITION in result.risk_reasons
+    assert not result.milestone_passed
+    assert result.desired_ladder == ()
+    assert result.fills == ()
+
+
+def test_projected_fills_over_limit_record_explicit_position_reason() -> None:
+    result = _run(snapshot=_snapshot(position="0.97"))
+
+    assert not result.risk_passed
+    assert RiskReason.MAX_POSITION in result.risk_reasons
     assert not result.milestone_passed
     assert result.desired_ladder == ()
     assert result.fills == ()
@@ -133,6 +146,7 @@ def test_open_order_count_is_added_to_new_grid_risk_budget() -> None:
     result = _run(risk_state=_risk_state(open_order_count=9))
 
     assert not result.risk_passed
+    assert RiskReason.MAX_OPEN_ORDERS in result.risk_reasons
     assert not result.milestone_passed
     assert result.desired_ladder == ()
     assert result.fills == ()
