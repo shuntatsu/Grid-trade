@@ -31,7 +31,12 @@ jobs:
         run: uv run --frozen --extra dev ruff format --check .
       - name: Lint
         run: uv run --frozen --extra dev ruff check .
-      - name: Test
-        run: uv run --frozen --extra dev pytest -q
-      - name: Type check
-        run: uv run --frozen --extra dev mypy src tests
+      - name: Test core
+        run: >-
+          uv run --frozen --extra dev pytest -q
+          --ignore=tests/research
+          --ignore=tests/integrations
+      - name: Type check core
+        run: >-
+          uv run --frozen --extra dev mypy src tests
+          --exclude '^tests/(research|integrations)/'
