@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
@@ -31,8 +31,11 @@ from grid_trade.research.replay_attribution import (
     FundingCashFlow,
     MarketImpactEligibilityConfig,
     OrderLiquidityEligibility,
+    ReplayLiquiditySummary,
     assess_order_liquidity_eligibility,
+    first_order_visibility_loss_ns,
     funding_cash_flow,
+    summarize_order_liquidity,
 )
 
 _HOUR_NS = 3_600_000_000_000
@@ -113,6 +116,7 @@ class Tier2ReplayResult:
     risk_accepted_order_count: int
     eligible_order_count: int
     order_eligibility: tuple[OrderLiquidityEligibility, ...]
+    liquidity_summary: ReplayLiquiditySummary
     replay_summary: ReplaySummary
     funding_cash_flows: tuple[FundingCashFlow, ...]
     funding_pnl: Decimal
@@ -158,6 +162,22 @@ def _validate_events(
     raise ValueError("Tier-2 replay requires an initial book snapshot")
 
 
+def _validate_exact_hour_funding(events: tuple[CanonicalEventEnvelope, ...]) -> None:
+    for event in events:
+        if (
+            event.event_type is not CanonicalEventType.FUNDING_REFERENCE
+            or event.exchange_ts_ns % _HOUR_NS != 0
+        ):
+            continue
+        reference = event.payload
+        if not isinstance(reference, CanonicalFundingReference):
+            raise TypeError("validated funding event must carry CanonicalFundingReference payload")
+        if reference.funding_rate is None:
+            raise ValueError("funding_rate is required at an exact-hour funding boundary")
+        if reference.oracle_price is None:
+            raise ValueError("oracle_price is required at an exact-hour funding boundary")
+
+
 def _market_snapshot(
     *,
     initial_event: CanonicalEventEnvelope,
@@ -201,6 +221,40 @@ def _order_liquidity(
         visibility_trusted=True,
         config=config,
     )
+
+
+def _attach_visibility_boundary(
+    *,
+    events: tuple[CanonicalEventEnvelope, ...],
+    order: PassiveOrderIntent,
+    eligibility: OrderLiquidityEligibility,
+) -> OrderLiquidityEligibility:
+    if not eligibility.eligible:
+        return eligibility
+    boundary = first_order_visibility_loss_ns(
+        events,
+        side=order.side,
+        price=order.price,
+    )
+    return replace(eligibility, visibility_boundary_ts_ns=boundary)
+
+
+def _trusted_replay_events(
+    events: tuple[CanonicalEventEnvelope, ...],
+    *,
+    visibility_boundary_ts_ns: int | None,
+) -> tuple[CanonicalEventEnvelope, ...]:
+    if visibility_boundary_ts_ns is None:
+        return events
+    return tuple(event for event in events if event.exchange_ts_ns < visibility_boundary_ts_ns)
+
+
+def _has_market_feed_after_initial(events: tuple[CanonicalEventEnvelope, ...]) -> bool:
+    market_event_count = sum(
+        event.event_type in {CanonicalEventType.BOOK_SNAPSHOT, CanonicalEventType.TRADE}
+        for event in events
+    )
+    return market_event_count > 1
 
 
 def _signed_fill_quantity(
@@ -351,6 +405,7 @@ def _eligibility_payload(
         "visible_top_n_notional": eligibility.visible_top_n_notional,
         "same_level_participation": eligibility.same_level_participation,
         "top_n_participation": eligibility.top_n_participation,
+        "visibility_boundary_ts_ns": eligibility.visibility_boundary_ts_ns,
     }
 
 
@@ -364,6 +419,7 @@ def _evidence(
     risk_orders: tuple[PassiveOrderIntent, ...],
     eligible_orders: tuple[PassiveOrderIntent, ...],
     eligibility: tuple[OrderLiquidityEligibility, ...],
+    liquidity_summary: ReplayLiquiditySummary,
     risk_decision: RiskDecision,
     decision_digest: str,
     converted_receive_mode: str,
@@ -395,6 +451,7 @@ def _evidence(
             {
                 "eligible_orders": tuple(_order_payload(order) for order in eligible_orders),
                 "eligibility": tuple(_eligibility_payload(item) for item in eligibility),
+                "liquidity_summary": _canonical_value(liquidity_summary),
                 "market_impact_config": _canonical_value(manifest.market_impact),
             },
         ),
@@ -466,6 +523,10 @@ def _evidence(
                     "synthetic_receive_latency_ns": manifest.synthetic_receive_latency_ns,
                     "hft_config": _canonical_value(manifest.hft),
                 },
+                "replay_quality": {
+                    "liquidity_summary": _canonical_value(liquidity_summary),
+                    "visibility_boundary_policy": "stop_before_first_untrusted_order_price_boundary",
+                },
                 "candidate_order_count": len(candidate_orders),
                 "risk_accepted_order_count": len(risk_orders),
                 "eligible_order_count": len(eligible_orders),
@@ -520,10 +581,7 @@ def run_tier2_replay(
         raise ValueError("Tier-2 replay requires a clean initial working-order state")
 
     initial_event = _validate_events(manifest, events)
-    converted = canonical_events_to_hftbacktest_fixture(
-        events,
-        synthetic_receive_latency_ns=manifest.synthetic_receive_latency_ns,
-    )
+    _validate_exact_hour_funding(events)
     market_snapshot = _market_snapshot(
         initial_event=initial_event,
         manifest=manifest,
@@ -545,7 +603,7 @@ def run_tier2_replay(
     initial_book = initial_event.payload
     if not isinstance(initial_book, CanonicalBookSnapshot):
         raise TypeError("initial event must carry CanonicalBookSnapshot payload")
-    eligibility = tuple(
+    decision_eligibility = tuple(
         _order_liquidity(
             book=initial_book,
             order=order,
@@ -553,19 +611,40 @@ def run_tier2_replay(
         )
         for order in risk_orders
     )
+    replay_eligibility = tuple(
+        _attach_visibility_boundary(events=events, order=order, eligibility=eligibility)
+        for order, eligibility in zip(risk_orders, decision_eligibility, strict=True)
+    )
     eligible_orders = tuple(
-        order for order, decision in zip(risk_orders, eligibility, strict=True) if decision.eligible
+        order
+        for order, decision in zip(risk_orders, replay_eligibility, strict=True)
+        if decision.eligible
+    )
+    liquidity_summary = summarize_order_liquidity(replay_eligibility)
+    trusted_events = _trusted_replay_events(
+        events,
+        visibility_boundary_ts_ns=liquidity_summary.earliest_visibility_boundary_ts_ns,
     )
 
-    replay_summary = (
-        replay_passive_orders(converted.fixture, eligible_orders, manifest.hft)
-        if eligible_orders
-        else ReplaySummary(
+    if eligible_orders and _has_market_feed_after_initial(trusted_events):
+        converted = canonical_events_to_hftbacktest_fixture(
+            trusted_events,
+            synthetic_receive_latency_ns=manifest.synthetic_receive_latency_ns,
+        )
+        replay_summary = replay_passive_orders(converted.fixture, eligible_orders, manifest.hft)
+        converted_receive_mode = converted.receive_timestamp_mode.value
+    else:
+        replay_summary = ReplaySummary(
             fills=(),
             ending_position=Decimal(0),
             open_order_count=0,
         )
-    )
+        converted_receive_mode = (
+            "not_run_no_eligible_orders"
+            if not eligible_orders
+            else "not_run_no_trusted_feed_before_visibility_boundary"
+        )
+
     side_by_client_id = {order.client_order_id: order.side for order in eligible_orders}
     funding_flows = _funding_cash_flows(
         events=events,
@@ -590,7 +669,7 @@ def run_tier2_replay(
         realized_volatility=realized_volatility,
         risk_decision=policy.risk_decision,
         risk_orders=risk_orders,
-        eligibility=eligibility,
+        eligibility=decision_eligibility,
     )
     run_id = _run_id(
         manifest=manifest,
@@ -608,10 +687,11 @@ def run_tier2_replay(
         candidate_orders=candidate_orders,
         risk_orders=risk_orders,
         eligible_orders=eligible_orders,
-        eligibility=eligibility,
+        eligibility=replay_eligibility,
+        liquidity_summary=liquidity_summary,
         risk_decision=policy.risk_decision,
         decision_digest=decision_digest,
-        converted_receive_mode=converted.receive_timestamp_mode.value,
+        converted_receive_mode=converted_receive_mode,
         replay_summary=replay_summary,
         funding_flows=funding_flows,
         maker_fee_cash_flow=maker_fee_cash_flow,
@@ -626,7 +706,8 @@ def run_tier2_replay(
         candidate_order_count=len(candidate_orders),
         risk_accepted_order_count=len(risk_orders),
         eligible_order_count=len(eligible_orders),
-        order_eligibility=eligibility,
+        order_eligibility=replay_eligibility,
+        liquidity_summary=liquidity_summary,
         replay_summary=replay_summary,
         funding_cash_flows=funding_flows,
         funding_pnl=funding_pnl,
