@@ -10,7 +10,6 @@ from grid_trade.evidence.ledger import evidence_digest
 from grid_trade.strategy.dynamic_center import (
     CenterDecision,
     DynamicCenterConfig,
-    DynamicCenterState,
     initialize_dynamic_center,
 )
 from grid_trade.strategy.dynamic_center_transition import (
