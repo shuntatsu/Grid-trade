@@ -10,6 +10,11 @@ from grid_trade.strategy.dynamic_center import (
 )
 from grid_trade.strategy.fixed_grid import build_fixed_long_grid
 from grid_trade.strategy.grid_geometry import FixedLongGridConfig, build_long_grid_at_center
+from grid_trade.strategy.volatility_spacing import (
+    SpacingDecision,
+    VolatilitySpacingConfig,
+    propose_volatility_spacing,
+)
 
 __all__ = [
     "CenterDecision",
@@ -18,9 +23,12 @@ __all__ = [
     "DynamicCenterConfig",
     "DynamicCenterState",
     "FixedLongGridConfig",
+    "SpacingDecision",
+    "VolatilitySpacingConfig",
     "build_fixed_long_grid",
     "build_long_grid_at_center",
     "decide_dynamic_center",
     "initialize_dynamic_center",
     "propose_dynamic_center",
+    "propose_volatility_spacing",
 ]
