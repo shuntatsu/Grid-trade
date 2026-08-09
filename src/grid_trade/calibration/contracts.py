@@ -36,6 +36,16 @@ def _require_optional_score(value: Decimal | None, *, field: str) -> None:
         raise ValueError(f"{field} must be within [-1, 1]")
 
 
+def _require_component_availability(
+    value: Decimal | None,
+    status: "CalibrationComponentStatus",
+    *,
+    field: str,
+) -> None:
+    if (value is not None) != status.ready:
+        raise ValueError(f"{field}_status readiness must match {field} availability")
+
+
 @dataclass(frozen=True, slots=True)
 class CalibrationObservation:
     timestamp: datetime
@@ -105,11 +115,32 @@ class CalibratedMarketState:
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be non-negative")
 
-        if self.readiness is CalibrationReadiness.READY:
-            if not self.volatility_status.ready or not self.trend_status.ready:
-                raise ValueError("ready state requires ready volatility and trend components")
-            if self.volatility_scale is None or self.trend_score is None:
-                raise ValueError("ready state requires volatility_scale and trend_score")
+        _require_component_availability(
+            self.volatility_scale,
+            self.volatility_status,
+            field="volatility",
+        )
+        _require_component_availability(
+            self.trend_score,
+            self.trend_status,
+            field="trend",
+        )
+        _require_component_availability(
+            self.funding_score,
+            self.funding_status,
+            field="funding",
+        )
+
+        ready_count = int(self.volatility_status.ready) + int(self.trend_status.ready)
+        expected_readiness = (
+            CalibrationReadiness.READY
+            if ready_count == 2
+            else CalibrationReadiness.PARTIAL
+            if ready_count == 1
+            else CalibrationReadiness.NOT_READY
+        )
+        if self.readiness is not expected_readiness:
+            raise ValueError("readiness must match volatility and trend component readiness")
 
     @classmethod
     def not_ready(
