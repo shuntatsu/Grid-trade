@@ -1,7 +1,7 @@
 # S1 Dynamic Center Design
 
 Date: 2026-08-09
-Status: Approved design
+Status: Design for review
 Repository: `shuntatsu/Grid-trade`
 Branch: `s1-dynamic-center`
 Base: `grid-core`
@@ -51,9 +51,7 @@ If:
 
 `abs(d_t) < theta`
 
-then:
-
-`c_t = c_{t-1}`
+then the proposal keeps the previous center.
 
 If:
 
@@ -73,24 +71,20 @@ No directional forecast is present. The center moves only because current mid mo
 
 ## 4. Configuration contract
 
-Introduce a dedicated immutable configuration:
-
-`DynamicCenterConfig`
-
-Fields:
+Introduce immutable `DynamicCenterConfig` with:
 
 - `reanchor_threshold_bps: Decimal`
 - `max_step_bps: Decimal`
 
 Validation:
 
-- both values must be finite and strictly positive,
-- `max_step_bps < 10_000` so a single downward move cannot make the center non-positive,
-- no hidden defaults that claim market optimality.
+- both values finite and strictly positive,
+- `max_step_bps < 10_000` so a single downward proposal cannot make the center non-positive,
+- no hidden defaults that imply market optimality.
 
 Research parameter selection is training/validation-only. The sealed test cannot be used to tune either value.
 
-For the first controlled fixtures, parameters may be chosen for deterministic mechanical tests. They are not promoted as economic defaults.
+Controlled mechanical fixtures may use explicit values chosen only to exercise invariants. They are not economic defaults.
 
 ## 5. State contract
 
@@ -104,38 +98,60 @@ Validation:
 - center finite and strictly positive,
 - generation non-negative.
 
-Initialization:
+Initialization is explicit and separate from steady-state updates:
 
-- first valid snapshot initializes `center = snapshot.mid`,
+- when no prior state exists, initialize `center = snapshot.mid`,
 - generation starts at `0`,
-- initial S1 ladder must be economically identical to the S0 ladder for the same initial snapshot and grid configuration.
+- initial S1 ladder must be economically identical to the S0 ladder for the same initial snapshot and fixed-grid configuration.
 
-The state contains no trend score, inventory target, funding state, order-book signal, or volatility adaptation.
+The state contains no trend score, inventory target, funding state, order-book signal, volatility multiplier, or learned state.
 
-## 6. Center decision contract
+## 6. Proposal and effective-decision contracts
 
-A pure function maps `(snapshot, state, config)` to a `CenterDecision`.
+Responsibility is split so center arithmetic does not depend on grid geometry.
+
+### 6.1 `CenterProposal`
+
+A pure proposal function maps `(snapshot, prior_state_or_none, dynamic_center_config)` to a proposal.
+
+Required proposal fields:
+
+- previous center or `None` during initialization,
+- market mid,
+- signed deviation bps,
+- proposed center,
+- previous generation or `None`,
+- proposal reason.
+
+Proposal reasons:
+
+- `INITIALIZED`
+- `WITHIN_THRESHOLD`
+- `BOUNDED_REANCHOR`
+
+Exact threshold behavior is explicit: equality enters re-anchor consideration (`abs(d_t) >= theta`).
+
+### 6.2 `CenterDecision`
+
+A second pure resolution step combines the proposal with the fixed-grid configuration and the current economic ladder.
 
 Required decision fields:
 
-- previous center,
-- market mid,
-- signed deviation in bps,
-- proposed center,
+- proposal fields,
 - effective center,
-- previous generation,
 - effective generation,
 - `reanchored: bool`,
-- decision reason.
+- `economic_ladder_changed: bool`,
+- final decision reason.
 
-Decision reasons are finite and explicit:
+Final decision reasons:
 
 - `INITIALIZED`
 - `WITHIN_THRESHOLD`
 - `BOUNDED_REANCHOR`
 - `NO_EFFECTIVE_LADDER_CHANGE`
 
-Exact threshold behavior is explicit: equality triggers re-anchor consideration (`abs(d_t) >= theta`).
+`NO_EFFECTIVE_LADDER_CHANGE` can only be produced by this grid-aware resolution step, never by the center-arithmetic proposal function.
 
 ## 7. Shared ladder geometry
 
@@ -143,7 +159,7 @@ S0 and S1 must share the same ladder geometry implementation so the center sourc
 
 Extract or introduce a pure primitive conceptually equivalent to:
 
-`build_long_grid_at_center(center, fixed_grid_config, generation, stage)`
+`build_long_grid_at_center(center, fixed_grid_config, generation, client_order_prefix)`
 
 Requirements:
 
@@ -152,17 +168,18 @@ Requirements:
 - same per-level quantity as S0,
 - same tick-rounding rule as S0,
 - same strictly descending price invariant,
-- same positive-price invariant.
+- same positive-price invariant,
+- existing `PassiveOrderIntent` domain shape remains unchanged unless a separately justified migration is required.
 
-`build_fixed_long_grid(snapshot, ...)` remains a backward-compatible wrapper around `snapshot.mid`.
+`build_fixed_long_grid(snapshot, ...)` remains a backward-compatible wrapper around `snapshot.mid` and the S0 client-order prefix.
 
-S1 calls the shared primitive with its effective state center.
+S1 uses the shared primitive with its effective center and an S1-specific client-order prefix.
 
 ## 8. Effective-change suppression
 
-A numerical center movement must not automatically destroy queue priority.
+A numerical center proposal must not automatically destroy queue priority.
 
-After computing `candidate_center`, build the candidate ladder using `generation + 1` and compare the economic ladder to the current effective ladder while ignoring identity-only fields such as client order ID and generation.
+After computing `candidate_center`, build a candidate ladder using `generation + 1` and compare its economic fields with the current effective ladder while ignoring identity-only fields such as client order ID and generation.
 
 Economic comparison includes:
 
@@ -179,7 +196,9 @@ If the candidate center produces exactly the same economic ladder after tick rou
 - emit `NO_EFFECTIVE_LADDER_CHANGE`,
 - emit no cancel/replace work.
 
-This prevents queue resets caused by center changes that have no executable price effect.
+The previous center is intentionally retained in this case. A later market move is therefore still measured from the last center that actually changed executable orders.
+
+This prevents hidden center drift and queue resets caused by changes that have no executable price effect.
 
 ## 9. Generation and reconciliation semantics
 
@@ -189,11 +208,11 @@ When a re-anchor is effective:
 
 1. increment generation by exactly one,
 2. build the new desired ladder with new generation IDs,
-3. send it through the existing deterministic reconciliation layer,
+3. pass it through the existing deterministic reconciliation layer,
 4. cancel stale/conflicting working orders first,
 5. submit the new generation only after the cancellation phase has completed.
 
-The existing cancel-before-replace safety contract is reused; S1 must not create a second reconciliation engine.
+The existing cancel-before-replace safety contract is reused. S1 must not create a second reconciliation engine.
 
 When no effective re-anchor occurs:
 
@@ -218,7 +237,8 @@ If a re-anchor candidate fails risk:
 
 - do not submit the candidate generation,
 - preserve explicit risk reasons in Evidence,
-- do not claim the center update as successfully deployed,
+- do not claim the candidate center as successfully deployed,
+- retain the last effective center/generation as the deployed state,
 - fail closed.
 
 S1 remains long-only. No short order is introduced here.
@@ -238,8 +258,10 @@ Required payload:
 - effective center,
 - previous/effective generation,
 - re-anchored flag,
-- decision reason,
-- whether economic ladder prices changed.
+- proposal reason,
+- final decision reason,
+- whether economic ladder prices changed,
+- whether risk accepted deployment.
 
 All Decimal values remain canonical string-preserving evidence values under the existing deterministic JSONL/SHA-256 ledger rules.
 
@@ -247,7 +269,7 @@ S0 evidence schema should not change solely to support S1 unless a shared schema
 
 ## 12. Stateful ablation runner
 
-Introduce a multi-step research runner that can execute the same causal market sequence as:
+Introduce a multi-step research runner that executes the same causal market sequence as two arms:
 
 - S0 episode-fixed center,
 - S1 thresholded/bounded Dynamic Center.
@@ -279,9 +301,11 @@ The runner records at minimum:
 - fee PnL,
 - mechanics-only PnL until full economic attribution exists.
 
+The runner must not reuse future snapshots when computing a current center decision.
+
 ## 13. S1 controlled mechanical fixtures
 
-Before any historical study, deterministic fixtures must cover:
+Before historical study, deterministic fixtures must cover:
 
 1. no movement below threshold -> no re-anchor,
 2. exact threshold -> re-anchor consideration,
@@ -292,14 +316,14 @@ Before any historical study, deterministic fixtures must cover:
 7. candidate center changes numerically but tick-rounded ladder is unchanged -> no generation change,
 8. effective ladder change -> cancel-before-replace,
 9. partial-fill working order during re-anchor -> no unsafe duplicate risk,
-10. projected-position or order-count failure -> candidate generation rejected with explicit risk reason,
+10. projected-position or order-count failure -> candidate generation rejected with explicit risk reason and prior deployed center retained,
 11. same sequence in two independent Python processes -> identical Evidence digest.
 
 ## 14. Historical research parameterization
 
 S1 adds exactly two tunable strategy parameters: `theta` and `kappa`.
 
-Initial research search space should be expressed relative to the S0 grid spacing to remain interpretable across spacing settings, for example candidate ratios such as:
+Initial research search space should be expressed relative to S0 grid spacing to remain interpretable across spacing settings, with candidate ratios:
 
 - threshold / spacing: `0.25`, `0.50`, `1.00`,
 - max-step / spacing: `0.50`, `1.00`, `2.00`.
@@ -318,7 +342,7 @@ Hard requirements:
 - deterministic state/replay/evidence,
 - no future leakage,
 - no increase in unauthorized exposure,
-- no hidden strategy inputs beyond current mid and previous center state,
+- no hidden strategy inputs beyond current mid and previous effective center state,
 - realistic queue/partial-fill replay retained.
 
 Comparative requirements versus S0 on validation/OOS research windows:
@@ -376,7 +400,7 @@ If any of these are required to make S1 look profitable, S1 is considered unsupp
 Likely focused additions:
 
 - `grid_trade/strategy/grid_geometry.py` — shared center-based ladder geometry,
-- `grid_trade/strategy/dynamic_center.py` — state/config/decision logic,
+- `grid_trade/strategy/dynamic_center.py` — config/state/proposal/decision logic,
 - `grid_trade/research/s1_runner.py` — stateful S0-vs-S1 ablation orchestration,
 - Evidence enum/schema extension for center decisions,
 - mirrored unit/property/research tests.
