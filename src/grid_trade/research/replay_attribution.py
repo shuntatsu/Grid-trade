@@ -1,7 +1,19 @@
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
-from grid_trade.datasets.canonical import CanonicalFundingReference
+from grid_trade.datasets.canonical import (
+    BookSide,
+    BookVisibilityTracker,
+    CanonicalBookSnapshot,
+    CanonicalEventEnvelope,
+    CanonicalEventType,
+    CanonicalFundingReference,
+    VisibilityChange,
+    canonical_event_sort_key,
+)
+from grid_trade.domain.orders import OrderSide
+
+_DEFAULT_PARTICIPATION_QUANTILE = Decimal("0.95")
 
 
 def _require_finite(value: Decimal, *, field: str) -> None:
@@ -94,6 +106,7 @@ class OrderLiquidityEligibility:
     visible_top_n_notional: Decimal | None
     same_level_participation: Decimal | None
     top_n_participation: Decimal | None
+    visibility_boundary_ts_ns: int | None = None
 
     def __post_init__(self) -> None:
         if not self.reason.strip():
@@ -107,6 +120,39 @@ class OrderLiquidityEligibility:
         ):
             if value is not None:
                 _require_finite_non_negative(value, field=field)
+        if self.visibility_boundary_ts_ns is not None and self.visibility_boundary_ts_ns < 0:
+            raise ValueError("visibility_boundary_ts_ns must be non-negative")
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayLiquiditySummary:
+    participation_quantile: Decimal
+    max_same_level_participation: Decimal | None
+    high_quantile_same_level_participation: Decimal | None
+    max_top_n_participation: Decimal | None
+    high_quantile_top_n_participation: Decimal | None
+    earliest_visibility_boundary_ts_ns: int | None
+
+    def __post_init__(self) -> None:
+        _require_finite_positive(self.participation_quantile, field="participation_quantile")
+        if self.participation_quantile > 1:
+            raise ValueError("participation_quantile must be at most 1")
+        for field, value in (
+            ("max_same_level_participation", self.max_same_level_participation),
+            (
+                "high_quantile_same_level_participation",
+                self.high_quantile_same_level_participation,
+            ),
+            ("max_top_n_participation", self.max_top_n_participation),
+            ("high_quantile_top_n_participation", self.high_quantile_top_n_participation),
+        ):
+            if value is not None:
+                _require_finite_non_negative(value, field=field)
+        if (
+            self.earliest_visibility_boundary_ts_ns is not None
+            and self.earliest_visibility_boundary_ts_ns < 0
+        ):
+            raise ValueError("earliest_visibility_boundary_ts_ns must be non-negative")
 
 
 def funding_cash_flow(
@@ -233,11 +279,85 @@ def assess_order_liquidity_eligibility(
     )
 
 
+def first_order_visibility_loss_ns(
+    events: tuple[CanonicalEventEnvelope, ...],
+    *,
+    side: OrderSide,
+    price: Decimal,
+) -> int | None:
+    _require_finite_positive(price, field="price")
+    if events != tuple(sorted(events, key=canonical_event_sort_key)):
+        raise ValueError("events must be in canonical order")
+
+    book_side = BookSide.BID if side is OrderSide.BUY else BookSide.ASK
+    tracker = BookVisibilityTracker()
+    for event in events:
+        if event.event_type is not CanonicalEventType.BOOK_SNAPSHOT:
+            continue
+        snapshot = event.payload
+        if not isinstance(snapshot, CanonicalBookSnapshot):
+            raise TypeError("validated book event must carry CanonicalBookSnapshot payload")
+        updates = tracker.apply(snapshot)
+        if any(
+            update.side is book_side
+            and update.price == price
+            and update.change is VisibilityChange.VISIBILITY_LOST
+            for update in updates
+        ):
+            return event.exchange_ts_ns
+    return None
+
+
+def _nearest_rank(values: tuple[Decimal, ...], quantile: Decimal) -> Decimal | None:
+    if not values:
+        return None
+    ordered = tuple(sorted(values))
+    rank = int((quantile * len(ordered)).to_integral_value(rounding=ROUND_CEILING))
+    return ordered[max(0, rank - 1)]
+
+
+def summarize_order_liquidity(
+    decisions: tuple[OrderLiquidityEligibility, ...],
+    *,
+    participation_quantile: Decimal = _DEFAULT_PARTICIPATION_QUANTILE,
+) -> ReplayLiquiditySummary:
+    _require_finite_positive(participation_quantile, field="participation_quantile")
+    if participation_quantile > 1:
+        raise ValueError("participation_quantile must be at most 1")
+
+    same_level = tuple(
+        decision.same_level_participation
+        for decision in decisions
+        if decision.same_level_participation is not None
+    )
+    top_n = tuple(
+        decision.top_n_participation
+        for decision in decisions
+        if decision.top_n_participation is not None
+    )
+    boundaries = tuple(
+        decision.visibility_boundary_ts_ns
+        for decision in decisions
+        if decision.visibility_boundary_ts_ns is not None
+    )
+    return ReplayLiquiditySummary(
+        participation_quantile=participation_quantile,
+        max_same_level_participation=max(same_level, default=None),
+        high_quantile_same_level_participation=_nearest_rank(same_level, participation_quantile),
+        max_top_n_participation=max(top_n, default=None),
+        high_quantile_top_n_participation=_nearest_rank(top_n, participation_quantile),
+        earliest_visibility_boundary_ts_ns=min(boundaries, default=None),
+    )
+
+
 __all__ = [
     "FundingCashFlow",
     "MarketImpactEligibilityConfig",
     "OrderLiquidityEligibility",
+    "ReplayLiquiditySummary",
     "ReplayPnlAttribution",
     "assess_order_liquidity_eligibility",
+    "first_order_visibility_loss_ns",
     "funding_cash_flow",
+    "summarize_order_liquidity",
 ]
