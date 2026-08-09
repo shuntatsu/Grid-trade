@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from itertools import pairwise
 
 import pytest
 from hypothesis import given
@@ -119,4 +120,4 @@ def test_generated_prices_are_tick_aligned_and_strictly_descending(
 
     prices = [order.price for order in orders]
     assert all(price % config.tick_size == 0 for price in prices)
-    assert all(left > right for left, right in zip(prices, prices[1:], strict=False))
+    assert all(left > right for left, right in pairwise(prices))
