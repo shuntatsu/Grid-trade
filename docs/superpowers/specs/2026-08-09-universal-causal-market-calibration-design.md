@@ -14,6 +14,8 @@ The goal is not to create `BTCConfig`, `ETHConfig`, or per-symbol hand-tuned tab
 
 The existing S0-S7 grid mechanics remain the strategy under evaluation. This design changes how adaptive parameters and normalized signals are produced, not the hard Risk Controller or the sign-reversal safety contract.
 
+Cross-instrument experiments are research tests of universality only. Runtime trading remains single-instrument.
+
 ## 2. Problem statement
 
 The current research mechanics use absolute fixture values such as minimum spacing in basis points, a fixed coin-denominated inventory target, a fixed funding scale, and externally supplied trend scores. These values are useful for deterministic mechanics tests but are not acceptable as universal production/research strategy parameters.
@@ -38,6 +40,7 @@ Examples of fixed meta-parameters:
 - clipping bounds,
 - calibration warm-up requirements,
 - minimum evidence quality thresholds,
+- dimensionless volatility floor used only for numerical stability,
 - hard risk budgets.
 
 Examples that must not be fixed by symbol identity:
@@ -49,7 +52,9 @@ Examples that must not be fixed by symbol identity:
 - raw order-book imbalance price impacts,
 - symbol-name branches in strategy code.
 
-No strategy or calibration module may branch on instrument symbol to select behavior.
+Instrument identity may appear in Evidence, venue metadata lookup, and dataset identity, but no strategy or calibration module may branch on the symbol to select behavior.
+
+Exchange-supplied tick size, lot size, fee schedule, leverage limit, and similar venue metadata are observed contract data, not symbol-specific tuning parameters.
 
 ## 4. Architecture
 
@@ -60,44 +65,52 @@ Introduce a new boundary:
 Conceptually:
 
 ```text
-Trades / L2 / funding / spread / metadata
-                    |
-                    v
-          Causal Market Calibration
-     +--------------------------------+
-     | volatility scale              |
-     | order-arrival intensity A, k  |
-     | execution-cost floor          |
-     | trend normalization           |
-     | funding normalization         |
-     | OFI / microprice impact       |
-     | liquidity/depth scale         |
-     | inventory risk budget scale   |
-     +--------------------------------+
-                    |
-            dimensionless state
-                    |
-                    v
-             Adaptive Grid S0-S7
-                    |
-                    v
-               Hard Risk
-                    |
-                    v
-             Passive Execution
+Trades / L2 / funding / spread / venue metadata
+                       |
+                       v
+             Causal Market Calibration
+        +--------------------------------+
+        | volatility scale              |
+        | order-arrival intensity A, k  |
+        | execution-cost floor          |
+        | trend normalization           |
+        | funding normalization         |
+        | OFI / microprice impact       |
+        | liquidity/depth scale         |
+        +--------------------------------+
+                       |
+               normalized state
+                       |
+                       +--------------------+
+                       |                    |
+                       v                    v
+                Adaptive Grid          Risk Sizing
+                normalized q*          hard capacity
+                       |                    |
+                       +---------+----------+
+                                 v
+                           Application
+                                 |
+                           Hard Risk veto
+                                 |
+                                 v
+                        Passive Execution
 ```
 
-The Calibration layer is not allowed to submit orders or alter hard risk limits.
+Calibration is market-data-only. It is not allowed to read account equity/margin, submit orders, or alter hard risk limits.
+
+Risk sizing is separate and authoritative for capacity. Strategy may consume normalized capacity supplied by Application but may never enlarge it.
 
 ## 5. New domain contracts
 
 ### 5.1 `CalibrationObservation`
 
-Immutable causal input at one decision timestamp.
+Immutable causal market input at one decision timestamp.
 
 Required fields are grouped rather than tied to a venue-specific payload:
 
 - timestamp and source identity,
+- instrument identity for evidence only,
 - best bid / best ask / mid,
 - recent trades or aggregated trade-flow statistics,
 - realized return observations required by the configured volatility/trend estimator,
@@ -134,16 +147,31 @@ Required normalized fields:
 
 - `volatility_scale`,
 - `trend_score` in a bounded normalized range,
-- `funding_score` in a bounded normalized range,
+- `funding_score` in a bounded normalized range when available,
 - `order_book_score` in a bounded normalized range when available,
 - `estimated_microprice_displacement` in relative-price units when available,
-- `quote_distance_scale` / spacing recommendation in relative-price units,
+- `quote_distance_scale` / spacing recommendation in relative-price units when available,
 - `execution_cost_floor` in relative-price units,
-- `liquidity_score` or equivalent normalized depth state,
+- `liquidity_score` or equivalent normalized depth state when available,
 - calibration confidence / readiness flags,
 - timestamp and source identity.
 
 No field should contain an unexplained instrument-specific magic number.
+
+### 5.4 `NormalizedRiskCapacity`
+
+A separate immutable contract produced by the Risk layer, not Calibration.
+
+Contains:
+
+- absolute allowed position capacity in venue quantity units,
+- equivalent notional capacity,
+- normalized strategy capacity `Q_max = 1` mapping,
+- source risk-budget identity,
+- timestamp / account-state freshness,
+- readiness flag.
+
+Strategy expresses targets and level sizes as fractions of this capacity.
 
 ## 6. Volatility calibration
 
@@ -171,6 +199,8 @@ Model liquidity-taking arrival intensity as a function of quote distance:
 
 where `A` and `k` are estimated from rolling market/replay observations rather than fixed per instrument.
 
+The first estimator should construct distance buckets in tick- or relative-price units and estimate arrival intensity from causal trade/L2 observations. A practical baseline is to measure the distance from the contemporaneous reference price to liquidity-taking trade prices, accumulate count/exposure by distance bucket, and fit the log-linear intensity relation only when data-quality and identification checks pass.
+
 The calibration layer should expose an estimated quote-distance scale derived from:
 
 - realized volatility,
@@ -183,41 +213,53 @@ The first implementation does not need a full HJB solver. It may use a documente
 - `A`, `k`, and volatility are estimated causally,
 - units are explicit,
 - output is bounded,
+- fit quality and minimum sample support are explicit,
 - the approximation is independently tested against reference cases,
 - fallback behavior is fail-closed when estimation quality is insufficient.
+
+OHLC cannot identify `A` or `k` and may not be used to fabricate them.
 
 ## 8. Execution-cost floor
 
 Replace a static research-fixture cost floor with a causal economic floor.
 
-Conceptually:
+Conceptually, the minimum required edge for a completed passive trade cycle is:
 
-`spacing_floor = max(fee_cost, adverse_selection_cost, minimum_tick_cost, safety_buffer)`
+`required_edge = max(0, fee_component + adverse_selection_component + tick_component + uncertainty_buffer)`
+
+The spacing policy must not quote an economic edge below the appropriately mapped required edge.
 
 Inputs:
 
-- current or contract-bound maker fee / rebate,
+- current or experiment-bound maker fee / rebate,
+- expected exit/flatten cost assumption declared by the experiment,
 - recent realized post-fill markout where available,
 - tick-size induced minimum quote movement,
 - configured conservative uncertainty buffer.
 
 The calibration layer may consume execution Evidence from backtest/shadow/live observation, but it must not consume future fill outcomes when generating a historical decision.
 
+A markout observation becomes eligible for calibration only after its configured horizon has elapsed. Historical replay must enforce that timing exactly.
+
 If user-specific fee data is unavailable in an offline replay, the fee assumption must be bound to the dataset/experiment manifest rather than inferred from symbol identity.
 
 ## 9. Trend normalization
 
-Remove externally supplied arbitrary trend scores as a required strategy input.
+Remove externally supplied arbitrary trend scores as a required maintained-strategy input.
 
 The first maintained trend estimator should be dimensionless. A baseline form is:
 
-`z_trend = horizon_return / (volatility_scale * sqrt(horizon) + epsilon)`
+`denom = max(volatility_scale * sqrt(horizon), min_normalized_volatility)`
+
+`z_trend = horizon_return / denom`
 
 followed by bounded transformation such as:
 
 `trend_score = tanh(c * z_trend)`
 
-Exact horizon and transform gain are meta-parameters selected on training/validation, not per-symbol constants.
+`min_normalized_volatility` is a dimensionless numerical-stability meta-parameter, not a price-unit epsilon.
+
+Exact horizon, volatility floor, and transform gain are meta-parameters selected on training/validation, not per-symbol constants.
 
 Alternative robust momentum estimators may later be added behind the same interface and must be compared by ablation.
 
@@ -233,7 +275,7 @@ Baseline:
 
 then clip to a configured bounded interval before converting to `funding_score`.
 
-The robust scale should use a method that remains defined under long stretches of nearly constant funding; zero-scale cases must explicitly produce neutral/unavailable state rather than divide-by-zero artifacts.
+The robust scale should use a method that remains defined under long stretches of nearly constant funding. If the observed robust scale falls below a configured dimensionless minimum, funding becomes neutral/unavailable; the system must not divide by an unstable denominator.
 
 Funding remains an incremental S6 feature. The funding-aware market-making literature supports treating funding as an inventory-carry state, but observed gains are not universal across instruments. Therefore S6 must remain removable by ablation.
 
@@ -251,6 +293,8 @@ This follows the empirical result that short-horizon price changes are strongly 
 
 The calibrated output is a bounded relative-price displacement or normalized order-book score.
 
+Regression targets become eligible only after their prediction horizon has elapsed. No future midpoint may enter the feature state at the decision being evaluated.
+
 If L2 data is unavailable, S7 is explicitly unavailable; it must not be synthesized from OHLC.
 
 ## 12. Inventory normalization and sizing
@@ -259,9 +303,9 @@ Remove coin-denominated strategic targets from the universal policy contract.
 
 Represent strategy inventory in normalized units:
 
-`q_norm = q / Q_max`
+`q_norm = q / Q_max_abs_quantity`
 
-and define target / level sizes as fractions of `Q_max`.
+and define target / level sizes as fractions of normalized capacity.
 
 Examples of universal meta-parameters:
 
@@ -270,13 +314,15 @@ Examples of universal meta-parameters:
 - per-level risk fraction,
 - skew strength.
 
-`Q_max` itself is derived from hard risk/account state, not symbol identity:
+Absolute capacity is produced by `grid_trade/risk/sizing.py`, not by Calibration:
 
-`Q_max = min(Q_notional, Q_margin, Q_volatility_risk, Q_venue_limit)`
+`Q_max_abs_quantity = min(Q_notional, Q_margin, Q_volatility_risk, Q_venue_limit)`
 
-The exact risk-sizing formula belongs to a dedicated risk-sizing adapter because account equity and margin state are execution/account concerns. Strategy receives normalized capacity and may not enlarge it.
+The Risk sizing implementation may use account equity, current price, margin state, venue limits, and a hard volatility-risk budget. Calibration never receives those account fields.
 
-For pure research runs without account state, a normalized unit-capacity contract may be used, with notional conversion performed by the experiment harness.
+Strategy receives `NormalizedRiskCapacity` through Application and may only request a fraction within `[-1, 1]`.
+
+For pure research runs without account state, the experiment harness may provide a normalized unit-capacity contract, with notional conversion explicit in the experiment manifest.
 
 ## 13. Meta-parameter versus online-state boundary
 
@@ -289,7 +335,8 @@ Training/validation may select:
 - clipping bounds,
 - normalized inventory fractions,
 - trend transform gain,
-- minimum confidence requirements,
+- minimum normalized volatility,
+- minimum confidence / sample support,
 - uncertainty buffers.
 
 During sealed test / live shadow execution, these meta-parameters are frozen.
@@ -301,7 +348,7 @@ Only causal online state is updated:
 - funding distribution statistics,
 - OFI impact,
 - liquidity/depth state,
-- execution markout statistics using only fills already observed by decision time.
+- execution markout statistics using only fills whose markout horizon has already elapsed by decision time.
 
 A sealed test may not be used to retune meta-parameters.
 
@@ -315,7 +362,7 @@ Examples:
 - unstable / unidentified `k` -> quote-distance model unavailable,
 - funding robust scale degenerate -> funding neutral/unavailable,
 - stale L2 -> order-book signal unavailable,
-- markout sample too small -> adverse-selection floor uses a conservative bound declared by the experiment manifest,
+- markout sample too small -> adverse-selection floor uses only a conservative bound declared by the experiment manifest,
 - stale calibration timestamp -> no new passive risk.
 
 The combined calibrator exposes a minimum readiness policy. Strategy may degrade from S7 to a lower explicitly supported stage only if that downgrade is predeclared in the experiment contract; otherwise it must fail closed.
@@ -340,28 +387,50 @@ S6 consumes normalized funding score instead of raw funding divided by a globall
 
 S7 consumes calibrated relative-price displacement / normalized book score rather than a globally fixed OBI-to-bps multiplier.
 
-Backward-compatible fixture constructors may remain only for deterministic unit/mechanics tests. They must be clearly named as fixtures/test contracts and may not be used by production/shadow research orchestration.
+Backward-compatible fixture constructors may remain only for deterministic unit/mechanics tests. They must be clearly named as fixture/test contracts and may not be used by maintained research/shadow orchestration after migration.
 
-## 16. Proposed module boundaries
+## 16. Module boundaries and dependency direction
 
-New conceptual package:
+New package:
 
-- `grid_trade/calibration/contracts.py` — immutable observations/state/output contracts,
+- `grid_trade/calibration/contracts.py` — immutable market-calibration observations/state/output contracts,
 - `grid_trade/calibration/volatility.py` — causal volatility estimator,
 - `grid_trade/calibration/trend.py` — normalized momentum/trend,
 - `grid_trade/calibration/intensity.py` — GLFT-style `A, k` estimation,
 - `grid_trade/calibration/execution_cost.py` — fees/tick/markout economic floor,
 - `grid_trade/calibration/funding.py` — robust funding normalization,
 - `grid_trade/calibration/order_flow.py` — OFI/depth/microprice calibration,
-- `grid_trade/calibration/engine.py` — orchestration and readiness,
-- `grid_trade/risk/sizing.py` or equivalent application boundary — derive normalized inventory capacity from account/risk constraints,
-- `grid_trade/research/` — calibration ablation, walk-forward, evidence.
+- `grid_trade/calibration/engine.py` — market-only orchestration and readiness,
+- `grid_trade/risk/sizing.py` — authoritative account/risk capacity calculation,
+- `grid_trade/research/` — calibration ablation, walk-forward, evidence orchestration.
 
-Dependency direction:
+Dependency rules:
 
-`domain -> calibration -> strategy -> application -> integrations/research`
+```text
+              domain
+             /      \
+            v        v
+     calibration     risk
+            |         |
+            v         |
+         strategy     |
+             \       /
+              v     v
+            application
+                |
+                v
+       execution / integrations
 
-Hard Risk remains independently authoritative. Calibration must not import execution adapters or research runners.
+research may orchestrate all public layers but no core layer imports research.
+```
+
+Calibration must not import Risk, Application, Execution, Integrations, or Research.
+
+Risk must not import Calibration, Strategy, Execution, Integrations, or Research.
+
+Strategy may consume calibration contracts but must not consume account/runtime adapters.
+
+Application is the composition boundary for calibrated market state, normalized risk capacity, strategy, and hard risk veto.
 
 ## 17. Evidence contract
 
@@ -378,11 +447,13 @@ Evidence must include:
 - funding center/scale and normalized score,
 - OFI/depth coefficients and quality when used,
 - economic cost-floor components,
-- normalized inventory capacity inputs,
+- normalized inventory capacity inputs from Risk sizing,
 - calibrated output consumed by strategy,
 - state digest before/after update.
 
 Identical ordered observations plus identical frozen meta-parameters must produce the same digest.
+
+Instrument identity is recorded for traceability but must not alter the result except through actual observed data/venue metadata.
 
 ## 18. Research and ablation protocol
 
@@ -407,9 +478,9 @@ A feature is removed if it improves one instrument only through symbol-specific 
 
 ## 19. Cross-instrument generalization test
 
-The universal claim must be tested directly.
+The universal claim must be tested directly without turning runtime into a multi-asset system.
 
-At minimum, research should include multiple sufficiently liquid perpetual instruments using the same frozen meta-parameter set where possible.
+Research should include multiple sufficiently liquid perpetual instruments using the same frozen meta-parameter set where possible.
 
 Acceptable experiment types:
 
@@ -417,9 +488,11 @@ Acceptable experiment types:
 - pooled training with symbol-disjoint validation/test,
 - rolling per-instrument online calibration with globally frozen meta-parameters.
 
-No symbol ID may be supplied as a feature to the rule-based calibrator.
+No symbol ID may be supplied as a predictive feature to the rule-based calibrator.
 
 The goal is not identical PnL across instruments. The goal is that scale adaptation occurs from market data rather than hand-authored symbol constants, with risk behavior remaining bounded.
+
+Venue metadata such as tick/lot constraints may differ across instruments and is applied mechanically after calibration.
 
 ## 20. Tier-2 requirement
 
@@ -454,7 +527,7 @@ TDD is required.
 Unit/property tests:
 
 - scale invariance under proportional price rescaling,
-- no dependence on symbol string,
+- no behavioral dependence on symbol string,
 - deterministic rolling state,
 - causal update ordering,
 - no future observation access,
@@ -468,11 +541,13 @@ Unit/property tests:
 Integration tests:
 
 - existing S0-S7 mechanics digests remain unchanged through compatibility fixture paths,
-- calibrated path reproduces expected reference cases,
+- calibrated path reproduces expected analytical/reference cases,
 - hftbacktest Tier-2 replay supplies causal fill/markout observations,
 - Nautilus integration preserves calibrated desired orders without embedding symbol calibration logic.
 
 Metamorphic tests are mandatory: multiply all prices/ticks/notional scales by a positive constant and verify normalized strategy decisions remain equivalent after correct unit conversion.
+
+A second mandatory metamorphic test changes only the instrument identifier while holding all observations and venue metadata identical; calibrated numerical outputs must remain identical and only evidence identity fields may differ.
 
 ## 23. Migration plan constraints
 
@@ -482,13 +557,13 @@ Migration sequence:
 
 1. add calibration contracts/engine with no strategy behavior change,
 2. add causal volatility/trend outputs,
-3. add normalized inventory capacity,
+3. add `grid_trade/risk/sizing.py` and normalized inventory capacity,
 4. add GLFT-style intensity calibration,
 5. add execution-cost floor,
 6. add funding normalization,
 7. add OFI/depth calibration,
-8. add a calibrated policy-config adapter,
-9. switch research orchestration from fixture config to calibrated config,
+8. add a calibrated policy-input adapter in Application,
+9. switch maintained research orchestration from fixture config to calibrated inputs,
 10. retain fixture constructors only under explicit mechanics-test/reproducibility paths.
 
 At each step existing Evidence digests for S0-S7 mechanics fixtures remain regression gates unless a separately reviewed schema migration is required.
@@ -499,6 +574,7 @@ The calibration layer is architecturally complete when:
 
 - no maintained research strategy requires a symbol-specific absolute parameter table,
 - normalized decisions are scale-invariant in metamorphic tests,
+- changing only the symbol identifier cannot change calibrated numerical decisions,
 - causal rolling updates are deterministic,
 - every calibrated component has readiness/quality gates,
 - Hard Risk remains independent and cannot be relaxed by calibration,
