@@ -47,7 +47,7 @@ The checked-in synthetic S0 fixture is execution-mechanics evidence only. It val
 
 ## S1 — pure Dynamic Center mechanics
 
-The `s1-dynamic-center` branch adds one isolated strategy change: a stateful center that re-anchors only after a configurable mid-price deviation threshold is reached, with a configurable maximum movement per decision.
+S1 adds one isolated strategy change: a stateful center that re-anchors only after a configurable mid-price deviation threshold is reached, with a configurable maximum movement per decision.
 
 S1 deliberately does **not** add trend prediction, volatility-adaptive spacing, inventory targeting/skew, short exposure, funding bias, order-book imbalance, microprice, adaptive sizing, or RL. Those remain separate later ablations.
 
@@ -65,14 +65,40 @@ Important S1 mechanics:
 
 The checked-in S1 comparison runner is explicitly `policy_reconciliation_only`. It measures center drift, generations, cancels, submissions, and queue-reset mechanics with deterministic Evidence. It does not infer fills or claim economic profitability from the controlled center path.
 
-S1 is therefore still **NO-GO for strategy promotion**. Historical Tier-2 continuous L2 replay, realistic dynamic order lifecycles, and sealed walk-forward/OOS evidence are required before any claim that Dynamic Center improves Hyperliquid profitability or risk-adjusted returns.
+## S2 — volatility-adaptive spacing mechanics
 
-Neither S0 nor S1 currently establishes:
+S2 changes only ladder spacing on top of S1 Dynamic Center. It maps the current causal realized-volatility value to an integer basis-point spacing, bounded by explicit minimum/maximum limits and a conservative execution-cost floor.
+
+The maintained S2 rule is:
+
+```text
+volatility_spacing_bps = realized_volatility × 10,000 × volatility_multiplier
+spacing_bps = ceil(min(max_spacing_bps,
+                       max(min_spacing_bps,
+                           execution_cost_floor_bps,
+                           volatility_spacing_bps)))
+```
+
+Important S2 mechanics:
+
+- spacing uses `Decimal` arithmetic and rounds upward only at final integer-bps conversion;
+- low volatility may narrow the grid but never below the configured cost floor;
+- high volatility widens spacing up to the configured maximum;
+- center and spacing are evaluated as one executable economic ladder, so simultaneous changes advance generation at most once;
+- a numerical spacing/center change which is tick-equivalent to the working ladder does not reset queue priority;
+- a shared stage-independent Application primitive owns Risk evaluation, replacement-aware open-order accounting, cancel-before-replace, post-cancel Risk recheck, and state-commit timing;
+- rejected candidate spacing/center values never become authoritative state;
+- canonical Evidence now records `SPACING_DECISION` together with center, Risk, and reconciliation decisions;
+- CI checks S0, S1, and S2 Evidence digests in independent Python processes.
+
+The checked-in S2 comparison runner remains `policy_reconciliation_only`: it demonstrates deterministic low→high→low volatility spacing transitions and fail-closed state/reconciliation semantics without inventing fills or PnL. S2 therefore remains **NO-GO for strategy promotion** until continuous Tier-2 L2 replay and sealed walk-forward/OOS evaluation quantify fill probability, turnover, adverse selection, fees, and realized economics.
+
+S0 through S2 do not currently establish:
 
 - historical Hyperliquid profitability;
 - a proven adaptive-grid edge;
-- value from the conditional short overlay;
-- realistic historical Hyperliquid queue position across dynamic re-anchors;
+- value from inventory targeting or the conditional short overlay;
+- realistic historical Hyperliquid queue position across dynamic re-anchors and spacing changes;
 - production readiness or live-capital safety;
 - permission to trade real funds.
 
@@ -88,7 +114,7 @@ Planned OSS reuse:
 Core dependency direction is intentionally constrained:
 
 - `domain/` contains immutable contracts and does not depend on higher layers;
-- `strategy/` contains pure grid/center policy and does not call Risk or Execution;
+- `strategy/` contains pure grid/center/spacing policy and does not call Risk or Execution;
 - `risk/` owns hard veto logic;
 - `execution/` owns runtime-neutral order reconciliation;
 - `application/` coordinates Strategy, Risk, and Execution;
