@@ -49,8 +49,9 @@ def build_nautilus_post_only_order(
     require_nautilus_runtime()
     _validate_alignment(instrument=instrument, intent=intent)
 
-    from nautilus_trader.model import OrderSide as NautilusOrderSide
-    from nautilus_trader.model import Price, Quantity, TimeInForce
+    from nautilus_trader.model.enums import OrderSide as NautilusOrderSide
+    from nautilus_trader.model.enums import TimeInForce
+    from nautilus_trader.model.objects import Price, Quantity
 
     instrument_id = getattr(instrument, "id", None)
     if instrument_id is None:
