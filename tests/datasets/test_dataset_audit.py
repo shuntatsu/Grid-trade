@@ -128,6 +128,24 @@ def test_missing_required_funding_boundary_is_rejected() -> None:
     assert any(finding.code == "missing_funding_reference" for finding in report.findings)
 
 
+def test_required_funding_schedule_is_part_of_audit_identity() -> None:
+    events = (_book(100), _funding(200))
+    without_requirement = audit.audit_canonical_dataset(
+        events,
+        raw_objects=(_raw_ref(),),
+    )
+    with_requirement = audit.audit_canonical_dataset(
+        events,
+        raw_objects=(_raw_ref(),),
+        required_funding_timestamps_ns=(200,),
+    )
+
+    assert without_requirement.acceptance is contracts.DatasetAcceptance.ACCEPTED
+    assert with_requirement.acceptance is contracts.DatasetAcceptance.ACCEPTED
+    assert with_requirement.required_funding_timestamps_ns == (200,)
+    assert audit.audit_report_digest(without_requirement) != audit.audit_report_digest(with_requirement)
+
+
 def test_unresolved_raw_object_hash_is_rejected() -> None:
     report = audit.audit_canonical_dataset(
         (_trade(timestamp_ns=100, stable_identity="tid-1", digest="b" * 64),),
