@@ -15,6 +15,14 @@ def _timestamp() -> dt.datetime:
     return dt.datetime(2026, 8, 9, 12, 0, tzinfo=dt.UTC)
 
 
+def _status(*, ready: bool, samples: int = 20, reason: str | None = None) -> CalibrationComponentStatus:
+    return CalibrationComponentStatus(
+        ready=ready,
+        sample_count=samples,
+        reason=reason or ("ready" if ready else "warmup"),
+    )
+
+
 def test_observation_requires_timezone_aware_timestamp() -> None:
     with pytest.raises(ValueError, match="timestamp"):
         CalibrationObservation(
@@ -95,8 +103,8 @@ def test_not_ready_state_preserves_unavailable_components() -> None:
 
 
 def test_normalized_scores_are_bounded() -> None:
-    not_ready = CalibrationComponentStatus(ready=False, sample_count=0, reason="warmup")
-    ready = CalibrationComponentStatus(ready=True, sample_count=20, reason="ready")
+    not_ready = _status(ready=False, samples=0)
+    ready = _status(ready=True)
 
     with pytest.raises(ValueError, match="trend_score"):
         CalibratedMarketState(
@@ -119,8 +127,8 @@ def test_normalized_scores_are_bounded() -> None:
 
 
 def test_relative_price_scales_cannot_be_negative() -> None:
-    not_ready = CalibrationComponentStatus(ready=False, sample_count=0, reason="unavailable")
-    ready = CalibrationComponentStatus(ready=True, sample_count=20, reason="ready")
+    not_ready = _status(ready=False, samples=0, reason="unavailable")
+    ready = _status(ready=True)
 
     with pytest.raises(ValueError, match="quote_distance_scale"):
         CalibratedMarketState(
@@ -137,6 +145,73 @@ def test_relative_price_scales_cannot_be_negative() -> None:
             estimated_microprice_displacement=None,
             volatility_status=ready,
             trend_status=ready,
+            funding_status=not_ready,
+            microstructure_status=not_ready,
+        )
+
+
+def test_component_value_availability_must_match_status() -> None:
+    not_ready = _status(ready=False, samples=5)
+    ready = _status(ready=True)
+
+    with pytest.raises(ValueError, match="volatility_status"):
+        CalibratedMarketState(
+            timestamp=_timestamp(),
+            source_id="fixture",
+            instrument_id="AAA-PERP",
+            readiness=CalibrationReadiness.PARTIAL,
+            volatility_scale=Decimal("0.01"),
+            trend_score=None,
+            funding_score=None,
+            quote_distance_scale=None,
+            execution_cost_floor=None,
+            order_book_score=None,
+            estimated_microprice_displacement=None,
+            volatility_status=not_ready,
+            trend_status=not_ready,
+            funding_status=not_ready,
+            microstructure_status=not_ready,
+        )
+
+    with pytest.raises(ValueError, match="funding_status"):
+        CalibratedMarketState(
+            timestamp=_timestamp(),
+            source_id="fixture",
+            instrument_id="AAA-PERP",
+            readiness=CalibrationReadiness.READY,
+            volatility_scale=Decimal("0.01"),
+            trend_score=Decimal("0.2"),
+            funding_score=Decimal("0.1"),
+            quote_distance_scale=None,
+            execution_cost_floor=None,
+            order_book_score=None,
+            estimated_microprice_displacement=None,
+            volatility_status=ready,
+            trend_status=ready,
+            funding_status=not_ready,
+            microstructure_status=not_ready,
+        )
+
+
+def test_overall_readiness_must_match_volatility_and_trend_status() -> None:
+    not_ready = _status(ready=False, samples=5)
+    ready = _status(ready=True)
+
+    with pytest.raises(ValueError, match="readiness"):
+        CalibratedMarketState(
+            timestamp=_timestamp(),
+            source_id="fixture",
+            instrument_id="AAA-PERP",
+            readiness=CalibrationReadiness.NOT_READY,
+            volatility_scale=Decimal("0.01"),
+            trend_score=None,
+            funding_score=None,
+            quote_distance_scale=None,
+            execution_cost_floor=None,
+            order_book_score=None,
+            estimated_microprice_displacement=None,
+            volatility_status=ready,
+            trend_status=not_ready,
             funding_status=not_ready,
             microstructure_status=not_ready,
         )
