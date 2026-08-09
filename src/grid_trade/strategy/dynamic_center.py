@@ -4,8 +4,7 @@ from enum import StrEnum
 
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
-from grid_trade.strategy.fixed_grid import FixedLongGridConfig
-from grid_trade.strategy.grid_geometry import build_long_grid_at_center
+from grid_trade.strategy.grid_geometry import FixedLongGridConfig, build_long_grid_at_center
 
 _BASIS_POINTS = Decimal(10_000)
 
