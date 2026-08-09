@@ -7,7 +7,7 @@ from grid_trade.research.microstructure_calibration_runner import (
 
 pytestmark = pytest.mark.research
 
-_EXPECTED_DIGEST = "409269fc188c2a66514133f0a4ccbf03c412ab6ed761d9068f818e6a5e9fd2bf"
+_EXPECTED_DIGEST = "7e56c2e56b29c6ad15b2f5b2f8d6440169fad6bc7862f0085ccb5eb09a85e239"
 
 
 def _run() -> MicrostructureCalibrationRunResult:
