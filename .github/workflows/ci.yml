@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, grid-core, s1-dynamic-center]
+    branches: [main, grid-core, s2-volatility-spacing]
   pull_request:
     branches: [main, grid-core]
 
