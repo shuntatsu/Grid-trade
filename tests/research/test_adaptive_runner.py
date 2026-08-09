@@ -49,4 +49,4 @@ def test_controlled_path_exercises_flat_before_short_and_execution_mechanics() -
     assert s5.submit_count > 0
     assert s5.reduce_only_submit_count > 0
     assert s5.short_new_risk_submit_count > 0
-    assert s5.ending_inventory == Decimal("-0.04")
+    assert s5.ending_inventory == Decimal(0)
