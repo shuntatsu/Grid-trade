@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+from grid_trade.domain.numeric import deterministic_decimal_context
+
 
 def _require_finite_positive(value: Decimal, *, field: str) -> None:
     if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
@@ -69,12 +71,15 @@ def derive_inventory_capacity(
     inputs: RiskSizingInput,
     config: RiskSizingConfig,
 ) -> InventoryCapacity:
-    q_notional = inputs.equity * config.max_notional_fraction / inputs.reference_price
-    q_margin = inputs.max_margin_notional / inputs.reference_price
-    volatility = max(inputs.volatility_scale, config.volatility_floor)
-    q_volatility = (
-        inputs.equity * config.max_single_move_loss_fraction / (inputs.reference_price * volatility)
-    )
+    with deterministic_decimal_context():
+        q_notional = inputs.equity * config.max_notional_fraction / inputs.reference_price
+        q_margin = inputs.max_margin_notional / inputs.reference_price
+        volatility = max(inputs.volatility_scale, config.volatility_floor)
+        q_volatility = (
+            inputs.equity
+            * config.max_single_move_loss_fraction
+            / (inputs.reference_price * volatility)
+        )
     q_venue = inputs.venue_max_quantity
 
     capacities = (
