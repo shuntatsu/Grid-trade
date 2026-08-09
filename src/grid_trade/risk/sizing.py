@@ -73,9 +73,7 @@ def derive_inventory_capacity(
     q_margin = inputs.max_margin_notional / inputs.reference_price
     volatility = max(inputs.volatility_scale, config.volatility_floor)
     q_volatility = (
-        inputs.equity
-        * config.max_single_move_loss_fraction
-        / (inputs.reference_price * volatility)
+        inputs.equity * config.max_single_move_loss_fraction / (inputs.reference_price * volatility)
     )
     q_venue = inputs.venue_max_quantity
 
