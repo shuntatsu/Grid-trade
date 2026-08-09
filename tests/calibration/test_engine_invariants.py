@@ -25,8 +25,7 @@ def _config() -> CalibrationEngineConfig:
 
 def _observation(index: int, price: str = "100") -> CalibrationObservation:
     return CalibrationObservation(
-        timestamp=dt.datetime(2026, 8, 9, 12, 0, tzinfo=dt.UTC)
-        + dt.timedelta(minutes=index),
+        timestamp=dt.datetime(2026, 8, 9, 12, 0, tzinfo=dt.UTC) + dt.timedelta(minutes=index),
         source_id="fixture",
         instrument_id="AAA-PERP",
         mid=Decimal(price),
