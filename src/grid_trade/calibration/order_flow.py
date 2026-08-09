@@ -48,10 +48,7 @@ def normalized_ofi(
 
     with deterministic_decimal_context():
         depth_scale = (
-            previous.bid_size
-            + previous.ask_size
-            + current.bid_size
-            + current.ask_size
+            previous.bid_size + previous.ask_size + current.bid_size + current.ask_size
         ) / Decimal(4)
         if depth_scale <= 0:
             raise ValueError("average top-of-book depth must be positive")
@@ -63,9 +60,7 @@ def microprice(book: TopOfBookObservation) -> Decimal:
         total_depth = book.bid_size + book.ask_size
         if total_depth <= 0:
             raise ValueError("top-of-book depth must be positive")
-        return (
-            book.best_ask * book.bid_size + book.best_bid * book.ask_size
-        ) / total_depth
+        return (book.best_ask * book.bid_size + book.best_bid * book.ask_size) / total_depth
 
 
 def microprice_displacement(book: TopOfBookObservation) -> Decimal:
