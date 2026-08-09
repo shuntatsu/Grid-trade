@@ -17,7 +17,7 @@ from grid_trade.research.hftbacktest_adapter import (
     load_microstructure_fixture,
     replay_passive_orders,
 )
-from grid_trade.risk.controller import evaluate_risk, filter_passive_orders
+from grid_trade.risk.controller import assess_passive_ladder_risk
 from grid_trade.strategy.fixed_grid import FixedLongGridConfig, build_fixed_long_grid
 
 
@@ -177,22 +177,6 @@ def _evidence_events(
     return tuple(events)
 
 
-def _projected_position_rejection(
-    decision: RiskDecision,
-    *,
-    proposed: tuple[PassiveOrderIntent, ...],
-    filtered: tuple[PassiveOrderIntent, ...],
-) -> RiskDecision:
-    if not decision.allow_new_risk or filtered == proposed:
-        return decision
-    return RiskDecision(
-        allow_new_risk=False,
-        cancel_all_passive=False,
-        target_flat=False,
-        reasons=(RiskReason.MAX_POSITION,),
-    )
-
-
 def run_s0(
     *,
     run_id: str,
@@ -213,17 +197,11 @@ def run_s0(
         risk_state,
         open_order_count=risk_state.open_order_count + len(proposed_ladder),
     )
-    risk_decision = evaluate_risk(snapshot, risk_limits, prospective_state)
-    filtered_ladder = filter_passive_orders(
+    risk_decision, filtered_ladder = assess_passive_ladder_risk(
         snapshot,
         risk_limits,
-        risk_decision,
+        prospective_state,
         proposed_ladder,
-    )
-    risk_decision = _projected_position_rejection(
-        risk_decision,
-        proposed=proposed_ladder,
-        filtered=filtered_ladder,
     )
     risk_passed = risk_decision.allow_new_risk and filtered_ladder == proposed_ladder
     desired_ladder = filtered_ladder if risk_passed else ()
