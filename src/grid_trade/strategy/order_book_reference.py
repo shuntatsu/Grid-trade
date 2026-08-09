@@ -58,15 +58,11 @@ def decide_order_book_reference(
         microprice_used = False
     else:
         relative_displacement = signals.microprice / market_mid - _ONE
-        blended_reference = center * (
-            _ONE + config.microprice_weight * relative_displacement
-        )
+        blended_reference = center * (_ONE + config.microprice_weight * relative_displacement)
         microprice_used = True
 
     signed_shift_bps = signals.order_book_imbalance * config.imbalance_shift_bps
-    effective_reference = blended_reference * (
-        _ONE + signed_shift_bps / _BASIS_POINTS
-    )
+    effective_reference = blended_reference * (_ONE + signed_shift_bps / _BASIS_POINTS)
     _require_finite_positive(effective_reference, field="effective_reference")
 
     return OrderBookReferenceDecision(
