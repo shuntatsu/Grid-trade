@@ -2,6 +2,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from grid_trade.application.dynamic_center import (
+    continue_dynamic_center_reconciliation,
+    transition_dynamic_center,
+)
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent, WorkingOrder
 from grid_trade.domain.risk import RiskLimits, RiskState
@@ -12,12 +16,7 @@ from grid_trade.strategy.dynamic_center import (
     DynamicCenterConfig,
     initialize_dynamic_center,
 )
-from grid_trade.strategy.dynamic_center_transition import (
-    continue_dynamic_center_reconciliation,
-    transition_dynamic_center,
-)
-from grid_trade.strategy.fixed_grid import FixedLongGridConfig
-from grid_trade.strategy.grid_geometry import build_long_grid_at_center
+from grid_trade.strategy.grid_geometry import FixedLongGridConfig, build_long_grid_at_center
 
 _BASIS_POINTS = Decimal(10_000)
 _ZERO_PNL = PnLBreakdown(
