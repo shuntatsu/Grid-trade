@@ -80,10 +80,12 @@ def _side_orders(
         if price <= 0:
             raise ValueError("adaptive ladder price must remain positive after tick rounding")
         if previous_price is not None:
-            if side is OrderSide.BUY and price >= previous_price:
-                raise ValueError("buy ladder must remain strictly descending")
-            if side is OrderSide.SELL and price <= previous_price:
-                raise ValueError("sell ladder must remain strictly ascending")
+            if price == previous_price:
+                continue
+            if side is OrderSide.BUY and price > previous_price:
+                raise ValueError("buy ladder must remain descending")
+            if side is OrderSide.SELL and price < previous_price:
+                raise ValueError("sell ladder must remain ascending")
 
         orders.append(
             PassiveOrderIntent(
