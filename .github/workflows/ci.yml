@@ -39,7 +39,7 @@ jobs:
         run: uv run ruff format --check .
       - name: Lint
         run: uv run ruff check .
-      - name: Type check
-        run: uv run mypy src tests
       - name: Test
         run: uv run pytest -q
+      - name: Type check
+        run: uv run mypy src tests
