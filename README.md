@@ -151,6 +151,24 @@ It records:
 
 The controlled runner deliberately does **not** infer fills from its exogenous position path and sets PnL to zero. It is a deterministic mechanics/ablation proof, not a profitability backtest.
 
+## Universal causal market calibration foundation
+
+The absolute values used by the checked-in S0–S7 controlled runners are deterministic **mechanics fixtures**, not universal market parameters. Strategy research must not infer that a fixed `40 bps` floor, a fixed coin quantity, a fixed funding divisor, or a symbol-specific threshold is appropriate for a live or historical instrument.
+
+The new `grid_trade.calibration` boundary provides an instrument-agnostic causal foundation:
+
+- robust rolling log-return volatility in relative-price units;
+- dimensionless trend normalization using the instrument's own volatility scale;
+- rolling robust funding normalization with explicit unavailable/degenerate states instead of a fixed global funding scale;
+- strict timestamp and source/instrument continuity in the calibration engine;
+- explicit readiness for every calibration component;
+- metamorphic tests proving that changing only the symbol identity cannot change numeric calibration output;
+- price-scale tests proving that multiplying all prices by a constant does not change normalized volatility/trend output.
+
+Account/risk capacity remains outside Calibration. `grid_trade.risk.sizing` derives `Q_max` from the most conservative of notional, margin, volatility-risk, and venue quantity caps. Calibration cannot increase Hard Risk limits, and Strategy may only consume a fraction of the capacity supplied to it.
+
+This foundation intentionally does **not** fabricate microstructure state. GLFT-style arrival intensity (`A`, `k`), execution/adverse-selection cost, OFI/depth impact, and microprice calibration still require causal Tier-2 trade/L2/fill data and are the next research phase. Until those components and calibrated S2–S7 integration pass realistic replay and sealed OOS gates, production remains NO-GO.
+
 ## Execution and research architecture
 
 OSS reuse:
@@ -163,8 +181,9 @@ OSS reuse:
 Dependency direction is intentionally constrained:
 
 - `domain/` contains immutable contracts and does not depend on higher layers;
+- `calibration/` contains causal instrument-agnostic estimators and cannot depend on Strategy, Risk, Application, Execution, Integrations, or Research;
 - `strategy/` contains pure policy and does not call Risk or Execution;
-- `risk/` owns hard veto logic;
+- `risk/` owns hard veto logic and account/risk-derived capacity sizing;
 - `execution/` owns runtime-neutral reconciliation;
 - `application/` coordinates Strategy, Risk, and Execution and is prevented from depending back on Evidence, Integrations, or Research;
 - `research/` owns controlled experiments and evidence workflows;
