@@ -1,5 +1,5 @@
-from datetime import UTC, datetime
 from decimal import Decimal
+from datetime import UTC, datetime
 
 import pytest
 from hypothesis import given, strategies as st
