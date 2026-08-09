@@ -37,7 +37,7 @@ def _sell_intent() -> PassiveOrderIntent:
         generation=1,
         level=1,
         side=OrderSide.SELL,
-        price=Decimal("101.0"),
+        price=Decimal("100.9"),
         quantity=Decimal("0.02"),
         reduce_only=False,
     )
