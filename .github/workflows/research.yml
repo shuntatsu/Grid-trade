@@ -117,6 +117,7 @@ jobs:
           src/grid_trade/research/hftbacktest_adapter.py
           src/grid_trade/research/replay_attribution.py
           src/grid_trade/research/tier2_calibrated_candidate.py
+          src/grid_trade/research/tier2_calibrated_replay.py
           src/grid_trade/research/tier2_replay.py
           src/grid_trade/research/tier2_fixture_runner.py
           tests/datasets
