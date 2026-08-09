@@ -16,6 +16,7 @@ from grid_trade.research.hftbacktest_adapter import (
 pytestmark = pytest.mark.research
 
 _FIXTURE = Path("tests/fixtures/microstructure/s0_round_trip.csv")
+_SELL_FIXTURE = Path("tests/fixtures/microstructure/sell_round_trip.csv")
 
 
 def _buy_intent() -> PassiveOrderIntent:
@@ -25,6 +26,18 @@ def _buy_intent() -> PassiveOrderIntent:
         level=1,
         side=OrderSide.BUY,
         price=Decimal("99.0"),
+        quantity=Decimal("0.02"),
+        reduce_only=False,
+    )
+
+
+def _sell_intent() -> PassiveOrderIntent:
+    return PassiveOrderIntent(
+        client_order_id="adaptive:g1:sell:l1",
+        generation=1,
+        level=1,
+        side=OrderSide.SELL,
+        price=Decimal("101.0"),
         quantity=Decimal("0.02"),
         reduce_only=False,
     )
@@ -139,6 +152,19 @@ def test_risk_adverse_queue_replay_observes_partial_then_full_fill() -> None:
         ending_position=Decimal("0.02"),
         open_order_count=0,
     )
+
+
+def test_sell_side_replay_can_fill_and_produces_negative_inventory() -> None:
+    summary = replay_passive_orders(
+        load_microstructure_fixture(_SELL_FIXTURE),
+        (_sell_intent(),),
+        _config(),
+    )
+
+    assert summary.fills
+    assert sum((fill.quantity for fill in summary.fills), Decimal(0)) == Decimal("0.02")
+    assert summary.ending_position == Decimal("-0.02")
+    assert summary.open_order_count == 0
 
 
 def test_first_fill_occurs_only_after_existing_queue_is_consumed() -> None:
