@@ -100,6 +100,36 @@ def test_preserves_sell_and_reduce_only_flags() -> None:
     assert order.is_reduce_only
 
 
+def test_preserves_new_risk_sell_for_conditional_short_overlay() -> None:
+    from nautilus_trader.model.enums import OrderSide as NautilusOrderSide
+
+    strategy, instrument = _runtime_objects()
+    order = build_nautilus_post_only_order(
+        strategy=strategy,
+        instrument=instrument,
+        intent=_intent(side=OrderSide.SELL, price="101.0", reduce_only=False),
+    )
+
+    assert order.side == NautilusOrderSide.SELL
+    assert order.is_post_only
+    assert not order.is_reduce_only
+
+
+def test_preserves_reduce_only_buy_for_short_derisking() -> None:
+    from nautilus_trader.model.enums import OrderSide as NautilusOrderSide
+
+    strategy, instrument = _runtime_objects()
+    order = build_nautilus_post_only_order(
+        strategy=strategy,
+        instrument=instrument,
+        intent=_intent(side=OrderSide.BUY, price="99.0", reduce_only=True),
+    )
+
+    assert order.side == NautilusOrderSide.BUY
+    assert order.is_post_only
+    assert order.is_reduce_only
+
+
 def test_rejects_untick_aligned_price_instead_of_rounding() -> None:
     strategy, instrument = _runtime_objects()
 
