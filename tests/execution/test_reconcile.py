@@ -167,7 +167,10 @@ def test_reconciliation_is_independent_of_input_tuple_order(ordering: list[int])
     reordered_desired = tuple(desired[index] for index in ordering)
     reordered_working = tuple(_working(desired[index]) for index in reversed(ordering))
 
-    assert reconcile_passive_orders(
-        desired=reordered_desired,
-        working=reordered_working,
-    ) == ReconciliationPlan()
+    assert (
+        reconcile_passive_orders(
+            desired=reordered_desired,
+            working=reordered_working,
+        )
+        == ReconciliationPlan()
+    )
