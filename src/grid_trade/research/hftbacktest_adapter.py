@@ -129,9 +129,13 @@ def load_microstructure_fixture(path: Path) -> MicrostructureFixture:
     return MicrostructureFixture(snapshot=tuple(snapshot), feed=tuple(feed))
 
 
-def _runtime_modules() -> tuple[ModuleType, ModuleType]:
+def _runtime_modules() -> tuple[ModuleType, ModuleType, ModuleType]:
     require_hftbacktest_runtime()
-    return import_module("hftbacktest"), import_module("numpy")
+    return (
+        import_module("hftbacktest"),
+        import_module("hftbacktest.types"),
+        import_module("numpy"),
+    )
 
 
 def _event_flags(hft: ModuleType, row: MicrostructureRow) -> int:
@@ -211,7 +215,8 @@ def replay_passive_orders(
     intents: tuple[PassiveOrderIntent, ...],
     config: HftReplayConfig,
 ) -> ReplaySummary:
-    hft, np = _runtime_modules()
+    hft, hft_types, np = _runtime_modules()
+    until_end_of_data = int(hft_types.UNTIL_END_OF_DATA)
     if len({intent.client_order_id for intent in intents}) != len(intents):
         raise ValueError("passive replay requires unique client_order_id values")
     for intent in intents:
@@ -237,7 +242,7 @@ def replay_passive_orders(
     fills: list[ReplayFill] = []
 
     try:
-        bootstrap_result = int(backtest.wait_next_feed(False, int(hft.UNTIL_END_OF_DATA)))
+        bootstrap_result = int(backtest.wait_next_feed(False, until_end_of_data))
         if bootstrap_result != 2:
             raise RuntimeError(
                 f"expected one market-feed bootstrap event, got {bootstrap_result}",
@@ -254,7 +259,7 @@ def replay_passive_orders(
             )
 
         while True:
-            result = int(backtest.wait_next_feed(True, int(hft.UNTIL_END_OF_DATA)))
+            result = int(backtest.wait_next_feed(True, until_end_of_data))
             if result == 1:
                 break
             if result not in {0, 2, 3}:
