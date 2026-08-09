@@ -12,6 +12,7 @@ from grid_trade.application.calibrated_adaptive import (
     prepare_calibrated_adaptive_inputs,
     transition_calibrated_adaptive_grid,
 )
+from grid_trade.calibration.contracts import CalibrationObservation
 from grid_trade.calibration.engine import CalibrationEngineConfig
 from grid_trade.calibration.execution_cost import ExecutionCostConfig
 from grid_trade.calibration.funding import FundingCalibrationConfig
@@ -245,9 +246,7 @@ def _normalized_signature(
 ) -> tuple[object, ...]:
     mid = final_inputs.snapshot.mid
     microprice_ratio = (
-        None
-        if final_inputs.signals.microprice is None
-        else final_inputs.signals.microprice / mid
+        None if final_inputs.signals.microprice is None else final_inputs.signals.microprice / mid
     )
     normalized_prices = tuple(order.price / mid for order in transition_ladder)
     return (
@@ -299,10 +298,7 @@ def _run_path(
     for index, minute in enumerate((10, 11, 12, 13)):
         mid = _mid(index, price_scale)
         bid_size, ask_size = _book_sizes(index, size_scale)
-        observation = __import__(
-            "grid_trade.calibration.contracts",
-            fromlist=["CalibrationObservation"],
-        ).CalibrationObservation(
+        observation = CalibrationObservation(
             timestamp=_time(minute),
             source_id=source_id,
             instrument_id=instrument_id,
@@ -338,8 +334,7 @@ def _run_path(
     init_capacity = derive_inventory_capacity(
         RiskSizingInput(
             equity=equity,
-            reference_price=init_update.foundation.market_state.timestamp
-            and _mid(2, price_scale),
+            reference_price=_mid(2, price_scale),
             volatility_scale=init_update.market_state.volatility_scale or Decimal(0),
             max_margin_notional=equity,
             venue_max_quantity=Decimal("10"),
@@ -496,9 +491,7 @@ def _events(
                 "center_max_step_bps": inputs.policy_config.center.max_step_bps,
                 "min_spacing_bps": inputs.policy_config.spacing.min_spacing_bps,
                 "max_spacing_bps": inputs.policy_config.spacing.max_spacing_bps,
-                "execution_cost_floor_bps": (
-                    inputs.policy_config.spacing.execution_cost_floor_bps
-                ),
+                "execution_cost_floor_bps": (inputs.policy_config.spacing.execution_cost_floor_bps),
                 "order_quantity": inputs.policy_config.ladder.order_quantity,
                 "base_long_target": inputs.policy_config.inventory.base_long_target,
                 "max_short_target": inputs.policy_config.short.max_short_target,
@@ -529,9 +522,7 @@ def _events(
                 "preparation_ready": True,
                 "calibration_generation": baseline.calibration_generation,
                 "adaptive_generation": state.policy_state.generation,
-                "milestone_passed": (
-                    deterministic and symbol_invariant and scale_invariant
-                ),
+                "milestone_passed": (deterministic and symbol_invariant and scale_invariant),
                 "economics_validated": False,
                 "alpha_validated": False,
                 "production_authorized": False,
