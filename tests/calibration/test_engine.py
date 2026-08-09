@@ -12,7 +12,7 @@ from grid_trade.calibration.engine import (
 )
 from grid_trade.calibration.funding import FundingCalibrationConfig
 from grid_trade.calibration.trend import TrendCalibrationConfig
-from grid_trade.calibration.volatility import RobustVolatilityConfig
+from grid_trade.calibration.volatility import RobustVolatilityConfig, RobustVolatilityState
 
 
 def _config() -> CalibrationEngineConfig:
@@ -150,6 +150,28 @@ def test_identity_cannot_change_inside_one_engine_state() -> None:
 
     with pytest.raises(ValueError, match="instrument_id"):
         update_calibration_engine(accepted.next_state, changed_identity, _config())
+
+
+def test_nonzero_generation_requires_initialized_identity_timestamp_and_price_state() -> None:
+    with pytest.raises(ValueError, match="generation"):
+        CalibrationEngineState(generation=1)
+
+    with pytest.raises(ValueError, match="price"):
+        CalibrationEngineState(
+            generation=1,
+            last_timestamp=dt.datetime(2026, 8, 9, 12, 0, tzinfo=dt.UTC),
+            source_id="fixture",
+            instrument_id="AAA-PERP",
+        )
+
+
+def test_initial_generation_rejects_prepopulated_history() -> None:
+    with pytest.raises(ValueError, match="generation"):
+        CalibrationEngineState(
+            prices=(Decimal("100"),),
+            volatility_state=RobustVolatilityState(prices=(Decimal("100"),)),
+            generation=0,
+        )
 
 
 def test_identical_ordered_observations_are_deterministic() -> None:
