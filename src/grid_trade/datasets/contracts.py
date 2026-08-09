@@ -1,27 +1,27 @@
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from hashlib import sha256
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-class SourceFamily(str, Enum):
+class SourceFamily(StrEnum):
     ARCHIVE = "archive"
     NODE = "node"
     WEBSOCKET = "websocket"
     INFO = "info"
 
 
-class DatasetType(str, Enum):
+class DatasetType(StrEnum):
     L2_BOOK = "l2_book"
     TRADES = "trades"
     FUNDING_REFERENCE = "funding_reference"
     VENUE_METADATA = "venue_metadata"
 
 
-class DatasetAcceptance(str, Enum):
+class DatasetAcceptance(StrEnum):
     ACCEPTED = "accepted"
     ACCEPTED_WITH_WARNINGS = "accepted_with_warnings"
     REJECTED = "rejected"
