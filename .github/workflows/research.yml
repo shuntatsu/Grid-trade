@@ -2,7 +2,7 @@ name: Research Integration
 
 on:
   push:
-    branches: [grid-core, s2-volatility-spacing]
+    branches: [grid-core, adaptive-grid-completion]
     paths:
       - "src/grid_trade/application/**"
       - "src/grid_trade/evidence/**"
