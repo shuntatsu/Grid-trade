@@ -50,7 +50,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: research-v4-${{ github.workflow }}-${{ github.ref }}
+  group: research-v5-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -82,6 +82,11 @@ jobs:
           uv run --frozen --extra dev --extra research mypy
           src/grid_trade/research/s2_runner.py
           tests/research/test_s2_runner.py
+      - name: Type check adaptive research boundary
+        run: >-
+          uv run --frozen --extra dev --extra research mypy
+          src/grid_trade/research/adaptive_runner.py
+          tests/research/test_adaptive_runner.py
       - name: Verify S0 evidence across fresh processes
         shell: bash
         run: |
@@ -106,3 +111,11 @@ jobs:
           test -n "$first"
           test "$first" = "$second"
           echo "S2 evidence digest: $first"
+      - name: Verify adaptive evidence across fresh processes
+        shell: bash
+        run: |
+          first="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.adaptive_runner)"
+          second="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.adaptive_runner)"
+          test -n "$first"
+          test "$first" = "$second"
+          echo "Adaptive evidence digest: $first"
