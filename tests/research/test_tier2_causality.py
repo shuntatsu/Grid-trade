@@ -4,8 +4,14 @@ from decimal import Decimal
 import pytest
 
 from grid_trade.datasets.audit import audit_canonical_dataset, audit_report_digest
-from grid_trade.datasets.canonical import CanonicalEventEnvelope, CanonicalEventType, CanonicalTrade, TradeSide
-from grid_trade.research.tier2_fixture_runner import build_tier2_fixture_case
+from grid_trade.datasets.canonical import (
+    CanonicalEventEnvelope,
+    CanonicalEventType,
+    CanonicalTrade,
+    TradeSide,
+)
+from grid_trade.research.tier2_fixture_runner import Tier2FixtureCase, build_tier2_fixture_case
+from grid_trade.research.tier2_replay import Tier2ReplayManifest
 
 pytestmark = pytest.mark.research
 
@@ -29,7 +35,10 @@ def _future_trade(*, quantity: str) -> CanonicalEventEnvelope:
     )
 
 
-def _manifest_for_events(case, events: tuple[CanonicalEventEnvelope, ...]):
+def _manifest_for_events(
+    case: Tier2FixtureCase,
+    events: tuple[CanonicalEventEnvelope, ...],
+) -> Tier2ReplayManifest:
     report = audit_canonical_dataset(
         events,
         raw_objects=case.manifest.dataset.raw_objects,
@@ -48,8 +57,12 @@ def test_future_event_change_does_not_change_decision_digest() -> None:
     first_events = (*case.events, _future_trade(quantity="0.10"))
     second_events = (*case.events, _future_trade(quantity="0.90"))
 
-    first = replace(case, manifest=_manifest_for_events(case, first_events), events=first_events).run()
-    second = replace(case, manifest=_manifest_for_events(case, second_events), events=second_events).run()
+    first = replace(
+        case, manifest=_manifest_for_events(case, first_events), events=first_events
+    ).run()
+    second = replace(
+        case, manifest=_manifest_for_events(case, second_events), events=second_events
+    ).run()
 
     assert first.decision_digest == second.decision_digest
     assert first.evidence_digest != second.evidence_digest
