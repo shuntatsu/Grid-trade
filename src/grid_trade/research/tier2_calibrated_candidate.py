@@ -103,7 +103,9 @@ class Tier2CalibrationEvidenceFrame:
         if any(markout.matured_at > as_of for markout in self.matured_markouts):
             raise ValueError("matured markout cannot be newer than evidence-frame as_of timestamp")
         if any(sample.matured_at > as_of for sample in self.new_ofi_impact_samples):
-            raise ValueError("matured OFI sample cannot be newer than evidence-frame as_of timestamp")
+            raise ValueError(
+                "matured OFI sample cannot be newer than evidence-frame as_of timestamp"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,7 +281,10 @@ def derive_tier2_calibrated_candidate(
         if event.event_type is not CanonicalEventType.BOOK_SNAPSHOT:
             continue
 
-        while frame_index < len(frames) and frames[frame_index].as_of_timestamp_ns <= event.exchange_ts_ns:
+        while (
+            frame_index < len(frames)
+            and frames[frame_index].as_of_timestamp_ns <= event.exchange_ts_ns
+        ):
             frame = frames[frame_index]
             intensity_buckets = frame.intensity_buckets
             matured_markouts = frame.matured_markouts
