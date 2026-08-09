@@ -525,7 +525,9 @@ def _evidence(
                 },
                 "replay_quality": {
                     "liquidity_summary": _canonical_value(liquidity_summary),
-                    "visibility_boundary_policy": "stop_before_first_untrusted_order_price_boundary",
+                    "visibility_boundary_policy": (
+                        "stop_before_first_untrusted_order_price_boundary"
+                    ),
                 },
                 "candidate_order_count": len(candidate_orders),
                 "risk_accepted_order_count": len(risk_orders),
