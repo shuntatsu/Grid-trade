@@ -15,7 +15,9 @@ def _timestamp() -> dt.datetime:
     return dt.datetime(2026, 8, 9, 12, 0, tzinfo=dt.UTC)
 
 
-def _status(*, ready: bool, samples: int = 20, reason: str | None = None) -> CalibrationComponentStatus:
+def _status(
+    *, ready: bool, samples: int = 20, reason: str | None = None
+) -> CalibrationComponentStatus:
     return CalibrationComponentStatus(
         ready=ready,
         sample_count=samples,
