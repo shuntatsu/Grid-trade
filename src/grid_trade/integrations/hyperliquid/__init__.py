@@ -4,8 +4,13 @@ from grid_trade.integrations.hyperliquid.archive import (
 )
 from grid_trade.integrations.hyperliquid.forward_recorder import (
     FORWARD_SEGMENT_MANIFEST_SCHEMA_VERSION,
+    ContinuityRecord,
+    ForwardCaptureResult,
+    ForwardRecorderConfig,
+    ForwardRecorderSession,
     ForwardSegment,
     ForwardSegmentWriter,
+    HyperliquidForwardTransport,
     canonical_forward_segment_manifest_bytes,
     read_segment_records,
 )
@@ -29,8 +34,13 @@ __all__ = [
     "L2_BOOK_DECODER_VERSION",
     "NODE_DATA_COLLECTOR_SCHEMA_VERSION",
     "TRADES_DECODER_VERSION",
+    "ContinuityRecord",
+    "ForwardCaptureResult",
+    "ForwardRecorderConfig",
+    "ForwardRecorderSession",
     "ForwardSegment",
     "ForwardSegmentWriter",
+    "HyperliquidForwardTransport",
     "canonical_forward_segment_manifest_bytes",
     "normalize_l2_book",
     "normalize_meta_and_asset_ctxs",
