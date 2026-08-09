@@ -6,6 +6,7 @@ import pytest
 
 from grid_trade.application.calibrated_adaptive import (
     CalibratedAdaptiveMetaConfig,
+    CalibratedAdaptivePreparation,
     VenueGridConstraints,
     prepare_calibrated_adaptive_inputs,
 )
@@ -106,7 +107,12 @@ def _venue(*, price_scale: str = "1") -> VenueGridConstraints:
     )
 
 
-def _prepare(*, calibrated: CalibratedMarketState | None = None, meta=None, price_scale="1"):
+def _prepare(
+    *,
+    calibrated: CalibratedMarketState | None = None,
+    meta: CalibratedAdaptiveMetaConfig | None = None,
+    price_scale: str = "1",
+) -> CalibratedAdaptivePreparation:
     return prepare_calibrated_adaptive_inputs(
         snapshot=_snapshot(price_scale=price_scale),
         calibrated=calibrated or _market(),
@@ -164,7 +170,11 @@ def test_common_price_scaling_preserves_normalized_strategy_inputs() -> None:
     scaled = _prepare(price_scale="100")
     assert base.inputs is not None and scaled.inputs is not None
     assert base.inputs.effective_q_max == scaled.inputs.effective_q_max
-    assert base.inputs.signals == scaled.inputs.signals
+    assert base.inputs.signals.trend_score == scaled.inputs.signals.trend_score
+    assert base.inputs.signals.funding_rate == scaled.inputs.signals.funding_rate
+    assert base.inputs.signals.order_book_imbalance == scaled.inputs.signals.order_book_imbalance
+    assert base.inputs.signals.microprice is not None
+    assert scaled.inputs.signals.microprice == base.inputs.signals.microprice * Decimal("100")
     assert base.inputs.policy_config.spacing == scaled.inputs.policy_config.spacing
     assert base.inputs.policy_config.inventory == scaled.inputs.policy_config.inventory
     assert scaled.inputs.snapshot.mid == base.inputs.snapshot.mid * Decimal("100")
