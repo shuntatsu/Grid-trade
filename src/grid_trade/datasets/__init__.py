@@ -1,3 +1,11 @@
+from grid_trade.datasets.audit import (
+    AuditFinding,
+    AuditSeverity,
+    DatasetAuditReport,
+    audit_canonical_dataset,
+    audit_report_digest,
+    require_promoting_dataset,
+)
 from grid_trade.datasets.canonical import (
     BookSide,
     BookVisibilityTracker,
@@ -25,6 +33,8 @@ from grid_trade.datasets.contracts import (
 from grid_trade.datasets.manifest import DatasetManifest, canonical_manifest_bytes
 
 __all__ = [
+    "AuditFinding",
+    "AuditSeverity",
     "BookSide",
     "BookVisibilityTracker",
     "CanonicalBookLevel",
@@ -35,6 +45,7 @@ __all__ = [
     "CanonicalPayload",
     "CanonicalTrade",
     "DatasetAcceptance",
+    "DatasetAuditReport",
     "DatasetManifest",
     "DatasetType",
     "RawObjectIdentity",
@@ -44,7 +55,10 @@ __all__ = [
     "VisibilityChange",
     "VisibilityEpoch",
     "VisibleDepthUpdate",
+    "audit_canonical_dataset",
+    "audit_report_digest",
     "canonical_event_sort_key",
     "canonical_manifest_bytes",
+    "require_promoting_dataset",
     "sha256_bytes",
 ]
