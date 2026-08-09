@@ -180,9 +180,7 @@ def _target_pipeline(
         config=config.short,
     )
     target_after_short = (
-        short.effective_target
-        if config.stage >= AdaptiveStage.S5_SHORT
-        else target_after_derisk
+        short.effective_target if config.stage >= AdaptiveStage.S5_SHORT else target_after_derisk
     )
 
     funding = apply_funding_bias(
@@ -192,9 +190,7 @@ def _target_pipeline(
         config=config.funding,
     )
     target_after_funding = (
-        funding.effective_target
-        if config.stage >= AdaptiveStage.S6_FUNDING
-        else target_after_short
+        funding.effective_target if config.stage >= AdaptiveStage.S6_FUNDING else target_after_short
     )
 
     inventory = decide_inventory_target(
