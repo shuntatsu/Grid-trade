@@ -107,10 +107,7 @@ def transition_dynamic_center(
         desired=desired_ladder,
         working=working_orders,
     )
-    if accepted and not reconciliation.cancel:
-        next_state = _effective_state(decision)
-    else:
-        next_state = state
+    next_state = _effective_state(decision) if accepted and not reconciliation.cancel else state
 
     return DynamicCenterTransition(
         decision=decision,
@@ -152,10 +149,11 @@ def continue_dynamic_center_reconciliation(
         desired=desired_ladder,
         working=working_orders,
     )
-    if accepted and not reconciliation.cancel:
-        next_state = _effective_state(transition.decision)
-    else:
-        next_state = _previous_state(transition.decision)
+    next_state = (
+        _effective_state(transition.decision)
+        if accepted and not reconciliation.cancel
+        else _previous_state(transition.decision)
+    )
 
     return DynamicCenterTransition(
         decision=transition.decision,
