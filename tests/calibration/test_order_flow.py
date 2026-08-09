@@ -144,7 +144,9 @@ def test_future_ofi_label_is_retained_but_not_fitted_before_maturity() -> None:
     assert estimate.ready is False
     assert estimate.sample_count == 0
 
-    matured = estimate_ofi_impact(next_state, decision_time=_time(5), config=_impact_config(min_samples=1))
+    matured = estimate_ofi_impact(
+        next_state, decision_time=_time(5), config=_impact_config(min_samples=1)
+    )
     assert matured.ready is True
     assert matured.sample_count == 1
     assert matured.beta == Decimal("0.002")
