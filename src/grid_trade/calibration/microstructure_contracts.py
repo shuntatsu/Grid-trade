@@ -3,6 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
+from grid_trade.domain.numeric import deterministic_decimal_context
+
 
 def _require_aware(timestamp: datetime, *, field: str) -> None:
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
@@ -64,12 +66,14 @@ class TopOfBookObservation:
         _require_non_negative(self.ask_size, field="ask_size")
         if self.best_bid >= self.best_ask:
             raise ValueError("best_bid must be strictly below best_ask")
-        if self.bid_size + self.ask_size <= 0:
-            raise ValueError("top-of-book depth must be positive")
+        with deterministic_decimal_context():
+            if self.bid_size + self.ask_size <= 0:
+                raise ValueError("top-of-book depth must be positive")
 
     @property
     def mid(self) -> Decimal:
-        return (self.best_bid + self.best_ask) / Decimal(2)
+        with deterministic_decimal_context():
+            return (self.best_bid + self.best_ask) / Decimal(2)
 
 
 class MarkoutSide(StrEnum):
