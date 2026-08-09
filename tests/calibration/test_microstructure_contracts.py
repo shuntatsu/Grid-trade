@@ -28,6 +28,9 @@ def test_intensity_bucket_accepts_zero_arrivals_but_requires_positive_exposure()
     with pytest.raises(ValueError, match="exposure_seconds"):
         IntensityBucket(Decimal("1"), Decimal("0"), 1)
 
+    with pytest.raises(ValueError, match="distance_vol_units"):
+        IntensityBucket(Decimal("-0.1"), Decimal("20"), 1)
+
 
 def test_top_of_book_requires_valid_uncrossed_positive_book() -> None:
     book = TopOfBookObservation(
