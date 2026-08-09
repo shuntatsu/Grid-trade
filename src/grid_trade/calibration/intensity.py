@@ -150,11 +150,7 @@ def _poisson_log_likelihood(
     with deterministic_decimal_context():
         total = _ZERO
         for bucket in buckets:
-            mu = (
-                bucket.exposure_seconds
-                * A
-                * (-k * bucket.distance_vol_units).exp()
-            )
+            mu = bucket.exposure_seconds * A * (-k * bucket.distance_vol_units).exp()
             if mu <= 0:
                 raise ValueError("Poisson mean must remain positive")
             total -= mu
@@ -220,8 +216,7 @@ def estimate_arrival_intensity(
         e_fold_distance = _ONE / best_k
         positive_improvement = max(_ZERO, improvement)
         quality = _clip01(
-            positive_improvement
-            / (positive_improvement + Decimal(total_arrivals))
+            positive_improvement / (positive_improvement + Decimal(total_arrivals))
             if positive_improvement > 0
             else _ZERO
         )
