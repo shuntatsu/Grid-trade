@@ -51,6 +51,7 @@ class DatasetAuditReport:
     event_count: int
     exact_duplicate_count: int
     conflicting_duplicate_count: int
+    required_funding_timestamps_ns: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         for value in (
@@ -60,6 +61,12 @@ class DatasetAuditReport:
         ):
             if value < 0:
                 raise ValueError("audit counters must be non-negative")
+        if any(timestamp < 0 for timestamp in self.required_funding_timestamps_ns):
+            raise ValueError("required funding timestamps must be non-negative")
+        if self.required_funding_timestamps_ns != tuple(
+            sorted(set(self.required_funding_timestamps_ns))
+        ):
+            raise ValueError("required funding timestamps must be sorted and unique")
 
 
 def _canonical_value(value: object) -> Any:
@@ -114,6 +121,7 @@ def audit_canonical_dataset(
         raise ValueError("warning_gap_ns must be positive")
     if any(timestamp < 0 for timestamp in required_funding_timestamps_ns):
         raise ValueError("required funding timestamps must be non-negative")
+    normalized_required_funding = tuple(sorted(set(required_funding_timestamps_ns)))
 
     findings: list[AuditFinding] = []
     accepted_events: list[CanonicalEventEnvelope] = []
@@ -198,9 +206,9 @@ def audit_canonical_dataset(
         if event.event_type is CanonicalEventType.FUNDING_REFERENCE
         and isinstance(event.payload, CanonicalFundingReference)
         and event.payload.funding_rate is not None
-        and event.payload.mark_price is not None
+        and event.payload.oracle_price is not None
     }
-    for timestamp in sorted(set(required_funding_timestamps_ns)):
+    for timestamp in normalized_required_funding:
         if timestamp not in funding_timestamps:
             findings.append(
                 AuditFinding(
@@ -232,6 +240,7 @@ def audit_canonical_dataset(
         event_count=len(events),
         exact_duplicate_count=exact_duplicate_count,
         conflicting_duplicate_count=conflicting_duplicate_count,
+        required_funding_timestamps_ns=normalized_required_funding,
     )
 
 
