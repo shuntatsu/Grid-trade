@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 
 from grid_trade.domain.market import MarketSnapshot
+from grid_trade.domain.orders import PassiveOrderIntent
+from grid_trade.strategy.fixed_grid import FixedLongGridConfig
+from grid_trade.strategy.grid_geometry import build_long_grid_at_center
 
 _BASIS_POINTS = Decimal(10_000)
 
@@ -56,6 +60,44 @@ class CenterProposal:
             raise ValueError("previous_generation must be non-negative")
 
 
+class CenterDecisionReason(StrEnum):
+    WITHIN_THRESHOLD = "within_threshold"
+    BOUNDED_REANCHOR = "bounded_reanchor"
+    NO_EFFECTIVE_LADDER_CHANGE = "no_effective_ladder_change"
+
+
+@dataclass(frozen=True, slots=True)
+class CenterDecision:
+    previous_center: Decimal
+    market_mid: Decimal
+    deviation_bps: Decimal
+    proposed_center: Decimal
+    effective_center: Decimal
+    previous_generation: int
+    effective_generation: int
+    reanchored: bool
+    economic_ladder_changed: bool
+    reason: CenterDecisionReason
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "previous_center",
+            "market_mid",
+            "proposed_center",
+            "effective_center",
+        ):
+            _require_finite_positive(getattr(self, field_name), field=field_name)
+        if not self.deviation_bps.is_finite():
+            raise ValueError("deviation_bps must be finite")
+        if self.previous_generation < 0 or self.effective_generation < 0:
+            raise ValueError("generations must be non-negative")
+        expected_generation = self.previous_generation + (1 if self.reanchored else 0)
+        if self.effective_generation != expected_generation:
+            raise ValueError("effective_generation must change exactly once on re-anchor")
+        if self.reanchored != self.economic_ladder_changed:
+            raise ValueError("reanchored must equal economic_ladder_changed")
+
+
 def initialize_dynamic_center(snapshot: MarketSnapshot) -> DynamicCenterState:
     return DynamicCenterState(center=snapshot.mid, generation=0)
 
@@ -86,10 +128,100 @@ def propose_dynamic_center(
     )
 
 
+def _economic_signature(
+    ladder: tuple[PassiveOrderIntent, ...],
+) -> tuple[tuple[str, int, Decimal, Decimal, bool], ...]:
+    return tuple(
+        (
+            order.side.value,
+            order.level,
+            order.price,
+            order.quantity,
+            order.reduce_only,
+        )
+        for order in ladder
+    )
+
+
+def decide_dynamic_center(
+    snapshot: MarketSnapshot,
+    state: DynamicCenterState,
+    center_config: DynamicCenterConfig,
+    grid_config: FixedLongGridConfig,
+) -> tuple[CenterDecision, tuple[PassiveOrderIntent, ...]]:
+    proposal = propose_dynamic_center(snapshot, state, center_config)
+    current_ladder = build_long_grid_at_center(
+        state.center,
+        grid_config,
+        generation=state.generation,
+        stage="s1",
+    )
+
+    if not proposal.threshold_crossed:
+        return (
+            CenterDecision(
+                previous_center=state.center,
+                market_mid=proposal.market_mid,
+                deviation_bps=proposal.deviation_bps,
+                proposed_center=proposal.proposed_center,
+                effective_center=state.center,
+                previous_generation=state.generation,
+                effective_generation=state.generation,
+                reanchored=False,
+                economic_ladder_changed=False,
+                reason=CenterDecisionReason.WITHIN_THRESHOLD,
+            ),
+            current_ladder,
+        )
+
+    candidate_generation = state.generation + 1
+    candidate_ladder = build_long_grid_at_center(
+        proposal.proposed_center,
+        grid_config,
+        generation=candidate_generation,
+        stage="s1",
+    )
+    if _economic_signature(candidate_ladder) == _economic_signature(current_ladder):
+        return (
+            CenterDecision(
+                previous_center=state.center,
+                market_mid=proposal.market_mid,
+                deviation_bps=proposal.deviation_bps,
+                proposed_center=proposal.proposed_center,
+                effective_center=state.center,
+                previous_generation=state.generation,
+                effective_generation=state.generation,
+                reanchored=False,
+                economic_ladder_changed=False,
+                reason=CenterDecisionReason.NO_EFFECTIVE_LADDER_CHANGE,
+            ),
+            current_ladder,
+        )
+
+    return (
+        CenterDecision(
+            previous_center=state.center,
+            market_mid=proposal.market_mid,
+            deviation_bps=proposal.deviation_bps,
+            proposed_center=proposal.proposed_center,
+            effective_center=proposal.proposed_center,
+            previous_generation=state.generation,
+            effective_generation=candidate_generation,
+            reanchored=True,
+            economic_ladder_changed=True,
+            reason=CenterDecisionReason.BOUNDED_REANCHOR,
+        ),
+        candidate_ladder,
+    )
+
+
 __all__ = [
+    "CenterDecision",
+    "CenterDecisionReason",
     "CenterProposal",
     "DynamicCenterConfig",
     "DynamicCenterState",
+    "decide_dynamic_center",
     "initialize_dynamic_center",
     "propose_dynamic_center",
 ]
