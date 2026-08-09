@@ -135,9 +135,13 @@ def load_microstructure_fixture(path: Path) -> MicrostructureFixture:
     return MicrostructureFixture(snapshot=tuple(snapshot), feed=tuple(feed))
 
 
-def _runtime_modules() -> tuple[ModuleType, ModuleType]:
+def _runtime_modules() -> tuple[ModuleType, ModuleType, ModuleType]:
     require_hftbacktest_runtime()
-    return import_module("hftbacktest"), import_module("numpy")
+    return (
+        import_module("hftbacktest"),
+        import_module("hftbacktest.order"),
+        import_module("numpy"),
+    )
 
 
 def _event_flags(hft: ModuleType, row: MicrostructureRow) -> int:
@@ -227,7 +231,7 @@ def replay_passive_orders(
     intents: tuple[PassiveOrderIntent, ...],
     config: HftReplayConfig,
 ) -> ReplaySummary:
-    hft, np = _runtime_modules()
+    hft, hft_order, np = _runtime_modules()
     wait_timeout_ns = _wait_timeout_ns(fixture, config)
     if len({intent.client_order_id for intent in intents}) != len(intents):
         raise ValueError("passive replay requires unique client_order_id values")
@@ -282,7 +286,10 @@ def replay_passive_orders(
             orders = backtest.orders(0)
             for numeric_order_id, client_order_id in numeric_to_client.items():
                 order = orders.get(numeric_order_id)
-                if order is None or order.status not in {hft.PARTIALLY_FILLED, hft.FILLED}:
+                if order is None or order.status not in {
+                    hft_order.PARTIALLY_FILLED,
+                    hft_order.FILLED,
+                }:
                     continue
                 quantity = Decimal(str(order.exec_qty))
                 if quantity <= 0:
@@ -308,7 +315,10 @@ def replay_passive_orders(
         orders = backtest.orders(0)
         for numeric_order_id in numeric_to_client:
             order = orders.get(numeric_order_id)
-            if order is not None and order.status in {hft.NEW, hft.PARTIALLY_FILLED}:
+            if order is not None and order.status in {
+                hft_order.NEW,
+                hft_order.PARTIALLY_FILLED,
+            }:
                 open_order_count += 1
 
         return ReplaySummary(
