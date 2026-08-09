@@ -11,6 +11,7 @@ from grid_trade.datasets.canonical import (
     CanonicalEventType,
     CanonicalFundingReference,
     CanonicalTrade,
+    TradeSide,
     canonical_event_sort_key,
 )
 from grid_trade.datasets.contracts import DatasetAcceptance, RawObjectRef
@@ -84,7 +85,7 @@ def _trade_identity(event: CanonicalEventEnvelope, trade: CanonicalTrade) -> tup
 def _trade_fingerprint(
     event: CanonicalEventEnvelope,
     trade: CanonicalTrade,
-) -> tuple[int, object, Decimal, Decimal]:
+) -> tuple[int, TradeSide, Decimal, Decimal]:
     return (
         event.exchange_ts_ns,
         trade.side,
@@ -138,7 +139,7 @@ def audit_canonical_dataset(
         )
 
     available_raw_hashes = {raw.identity.sha256 for raw in raw_objects if raw.complete}
-    seen_trades: dict[tuple[str, str], tuple[int, object, Decimal, Decimal]] = {}
+    seen_trades: dict[tuple[str, str], tuple[int, TradeSide, Decimal, Decimal]] = {}
 
     for index, event in enumerate(events):
         if event.raw_object_sha256 not in available_raw_hashes:
@@ -171,9 +172,9 @@ def audit_canonical_dataset(
                 raise TypeError("validated trade event must carry CanonicalTrade payload")
             identity = _trade_identity(event, trade)
             fingerprint = _trade_fingerprint(event, trade)
-            previous = seen_trades.get(identity)
-            if previous is not None:
-                if previous == fingerprint:
+            previous_fingerprint = seen_trades.get(identity)
+            if previous_fingerprint is not None:
+                if previous_fingerprint == fingerprint:
                     exact_duplicate_count += 1
                 else:
                     conflicting_duplicate_count += 1
@@ -211,15 +212,15 @@ def audit_canonical_dataset(
             )
 
     if warning_gap_ns is not None:
-        for previous, current in pairwise(accepted_events):
-            gap_ns = current.exchange_ts_ns - previous.exchange_ts_ns
+        for previous_event, current_event in pairwise(accepted_events):
+            gap_ns = current_event.exchange_ts_ns - previous_event.exchange_ts_ns
             if gap_ns > warning_gap_ns:
                 findings.append(
                     AuditFinding(
                         code="large_exchange_gap",
                         severity=AuditSeverity.WARNING,
                         message=f"exchange timestamp gap {gap_ns}ns exceeds warning threshold",
-                        exchange_ts_ns=current.exchange_ts_ns,
+                        exchange_ts_ns=current_event.exchange_ts_ns,
                     )
                 )
 
