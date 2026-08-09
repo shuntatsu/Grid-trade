@@ -187,7 +187,22 @@ The Tier-2 inputs are L2/top-of-book observations, distance/exposure/arrival evi
 
 The checked-in microstructure calibration research runner is a **deterministic synthetic calibration/mechanics fixture**. It records frozen config, state generation, `A/k` and fit improvement, quote-distance scale, markout/fallback components, OFI beta/quality, predicted displacement, microprice displacement, and readiness in canonical Evidence. It also checks arbitrary-symbol rename and common price/size scale invariance. This runner does not establish historical performance, economic alpha, or production authorization.
 
-Phase B deliberately stops before strategy integration. S2–S7 still retain their controlled fixture inputs for regression. Phase C must compose the Foundation and Microstructure estimates into calibrated spacing, risk-derived quantity fractions, and adaptive signals, then prove the resulting strategy through realistic Tier-2 replay, symbol-disjoint walk-forward evaluation, sealed OOS tests, and stress gates.
+## Universal calibration → adaptive strategy integration
+
+Phase C adds a separate calibrated Application path while retaining the checked-in S0–S7 controlled fixture path unchanged for deterministic regression. The new path:
+
+- composes Foundation and Microstructure calibration with exact timestamp/source/instrument/mid consistency;
+- derives executable inventory capacity from `grid_trade.risk.sizing` and only rounds `Q_max` downward to the venue quantity step;
+- derives center thresholds, spacing limits, reservation skew, and order-book shift from volatility units rather than symbol-specific basis-point constants;
+- combines the volatility floor, GLFT quote-distance estimate, and calibrated execution/adverse-selection cost when deriving spacing;
+- consumes normalized funding with unit scale and normalized order-book/OFI state without symbol-specific divisors;
+- reconstructs calibrated microprice from relative displacement only when S7 microstructure evidence is ready;
+- compares an existing working ladder with the **previous applied runtime config** and the candidate ladder with the newly calibrated config, preventing dynamic parameter changes from being mistaken for queue-equivalent state;
+- keeps the previous config through cancel-before-replace and Risk rejection, committing the candidate config only when the candidate economic state is accepted;
+- preserves the Long → Flat → Short contract and leaves Hard Risk as the final veto authority;
+- emits additive deterministic calibrated-adaptive Evidence and proves arbitrary-symbol rename and common price/size scale invariance.
+
+The calibrated integration runner still does not infer historical fills or PnL and explicitly records `economics_validated=false`, `alpha_validated=false`, and `production_authorized=false`. Strategy economics must still pass realistic continuous Tier-2 replay, symbol-disjoint walk-forward evaluation, sealed OOS tests, and stress gates before any production consideration.
 
 ## Execution and research architecture
 
