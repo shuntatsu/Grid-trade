@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -6,6 +7,8 @@ from enum import Enum
 from typing import Any
 
 from grid_trade.datasets.contracts import DatasetAcceptance, RawObjectRef
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _require_non_empty(value: str, *, field: str) -> None:
@@ -46,6 +49,7 @@ class DatasetManifest:
     audit_schema_version: str
     acceptance: DatasetAcceptance
     created_at: datetime
+    audit_digest: str | None = None
 
     def __post_init__(self) -> None:
         _require_non_empty(self.instrument, field="instrument")
@@ -56,6 +60,8 @@ class DatasetManifest:
         _require_non_empty(self.ordering_schema_version, field="ordering_schema_version")
         _require_non_empty(self.audit_schema_version, field="audit_schema_version")
         _require_utc(self.created_at, field="created_at")
+        if self.audit_digest is not None and _SHA256_RE.fullmatch(self.audit_digest) is None:
+            raise ValueError("audit_digest must be 64 lowercase hexadecimal characters")
         if self.acceptance is not DatasetAcceptance.REJECTED and not self.raw_objects:
             raise ValueError("accepted dataset manifest requires at least one raw object")
         if any(raw.identity.instrument != self.instrument for raw in self.raw_objects):
