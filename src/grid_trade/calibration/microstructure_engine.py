@@ -295,9 +295,7 @@ def update_microstructure_engine(
 
     current_ofi = normalized_ofi(state.last_book, book) if state.last_book is not None else None
     microprice_relative = microprice_displacement(book)
-    predicted = (
-        predict_ofi_displacement(current_ofi, ofi_impact) if current_ofi is not None else None
-    )
+    predicted = predict_ofi_displacement(current_ofi, ofi_impact) if current_ofi is not None else None
 
     quote_distance_scale: Decimal | None = None
     order_book_score: Decimal | None = None
