@@ -1,11 +1,25 @@
 from dataclasses import dataclass, replace
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
+from grid_trade.application.passive_policy import (
+    PassivePolicyTransition,
+    continue_passive_policy_reconciliation,
+    transition_passive_policy,
+)
 from grid_trade.calibration.contracts import CalibratedMarketState
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.numeric import deterministic_decimal_context
+from grid_trade.domain.orders import PassiveOrderIntent, WorkingOrder
+from grid_trade.domain.risk import RiskLimits, RiskState
 from grid_trade.risk.sizing import InventoryCapacity
-from grid_trade.strategy.adaptive_grid import AdaptiveGridPolicyConfig, AdaptiveStage
+from grid_trade.strategy.adaptive_grid import (
+    AdaptiveGridDecision,
+    AdaptiveGridPolicyConfig,
+    AdaptiveGridState,
+    AdaptiveStage,
+    decide_adaptive_grid,
+    initialize_adaptive_grid,
+)
 from grid_trade.strategy.adaptive_ladder import AdaptiveLadderConfig
 from grid_trade.strategy.adaptive_signals import AdaptiveSignals
 from grid_trade.strategy.conditional_short import ShortOverlayConfig
@@ -111,14 +125,8 @@ class CalibratedAdaptiveMetaConfig:
         if self.max_spacing_vol_units < self.min_spacing_vol_units:
             raise ValueError("max_spacing_vol_units must be at least min_spacing_vol_units")
         _require_fraction(self.side_skew_strength, field="side_skew_strength")
-        _require_fraction(
-            self.warning_target_fraction,
-            field="warning_target_fraction",
-        )
-        _require_fraction(
-            self.severe_target_fraction,
-            field="severe_target_fraction",
-        )
+        _require_fraction(self.warning_target_fraction, field="warning_target_fraction")
+        _require_fraction(self.severe_target_fraction, field="severe_target_fraction")
         _require_fraction(
             self.funding_max_target_shift_fraction,
             field="funding_max_target_shift_fraction",
@@ -158,6 +166,17 @@ class CalibratedAdaptivePreparation:
             raise ValueError("reason must be non-empty")
         if (self.inputs is not None) != (self.reason == "ready"):
             raise ValueError("ready reason must match prepared input availability")
+
+
+@dataclass(frozen=True, slots=True)
+class CalibratedAdaptiveState:
+    policy_state: AdaptiveGridState
+    applied_config: AdaptiveGridPolicyConfig
+
+
+CalibratedAdaptiveTransition = PassivePolicyTransition[
+    CalibratedAdaptiveState, AdaptiveGridDecision
+]
 
 
 def _require_matching_market_context(
@@ -347,10 +366,83 @@ def prepare_calibrated_adaptive_inputs(
     )
 
 
+def initialize_calibrated_adaptive_grid(
+    inputs: CalibratedAdaptiveInputs,
+) -> tuple[CalibratedAdaptiveState, tuple[PassiveOrderIntent, ...]]:
+    policy_state, ladder = initialize_adaptive_grid(
+        inputs.snapshot,
+        inputs.signals,
+        inputs.policy_config,
+    )
+    return (
+        CalibratedAdaptiveState(
+            policy_state=policy_state,
+            applied_config=inputs.policy_config,
+        ),
+        ladder,
+    )
+
+
+def transition_calibrated_adaptive_grid(
+    *,
+    inputs: CalibratedAdaptiveInputs,
+    state: CalibratedAdaptiveState,
+    risk_limits: RiskLimits,
+    risk_state: RiskState,
+    working_orders: tuple[WorkingOrder, ...],
+) -> CalibratedAdaptiveTransition:
+    decision, candidate_policy_state, proposed_ladder = decide_adaptive_grid(
+        inputs.snapshot,
+        inputs.signals,
+        state.policy_state,
+        inputs.policy_config,
+        previous_config=state.applied_config,
+    )
+    candidate_config = (
+        inputs.policy_config if decision.economic_ladder_changed else state.applied_config
+    )
+    candidate_state = CalibratedAdaptiveState(
+        policy_state=candidate_policy_state,
+        applied_config=candidate_config,
+    )
+    return transition_passive_policy(
+        decision=decision,
+        previous_state=state,
+        candidate_state=candidate_state,
+        snapshot=inputs.snapshot,
+        risk_limits=risk_limits,
+        risk_state=risk_state,
+        working_orders=working_orders,
+        proposed_ladder=proposed_ladder,
+    )
+
+
+def continue_calibrated_adaptive_reconciliation(
+    transition: CalibratedAdaptiveTransition,
+    *,
+    snapshot: MarketSnapshot,
+    risk_limits: RiskLimits,
+    risk_state: RiskState,
+    working_orders: tuple[WorkingOrder, ...],
+) -> CalibratedAdaptiveTransition:
+    return continue_passive_policy_reconciliation(
+        transition,
+        snapshot=snapshot,
+        risk_limits=risk_limits,
+        risk_state=risk_state,
+        working_orders=working_orders,
+    )
+
+
 __all__ = [
     "CalibratedAdaptiveInputs",
     "CalibratedAdaptiveMetaConfig",
     "CalibratedAdaptivePreparation",
+    "CalibratedAdaptiveState",
+    "CalibratedAdaptiveTransition",
     "VenueGridConstraints",
+    "continue_calibrated_adaptive_reconciliation",
+    "initialize_calibrated_adaptive_grid",
     "prepare_calibrated_adaptive_inputs",
+    "transition_calibrated_adaptive_grid",
 ]
