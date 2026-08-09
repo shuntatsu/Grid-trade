@@ -59,9 +59,7 @@ class CalibrationEngineState:
 
         identity_initialized = self.source_id is not None and self.instrument_id is not None
         timestamp_initialized = self.last_timestamp is not None
-        has_history = bool(
-            self.prices or self.volatility_state.prices or self.funding_state.values
-        )
+        has_history = bool(self.prices or self.volatility_state.prices or self.funding_state.values)
 
         if self.generation == 0:
             if identity_initialized or timestamp_initialized or has_history:
