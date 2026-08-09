@@ -120,8 +120,7 @@ def test_conflicting_duplicate_trade_identity_is_rejected() -> None:
     assert report.acceptance is DatasetAcceptance.REJECTED
     assert report.conflicting_duplicate_count == 1
     assert any(
-        finding.code == "conflicting_trade_identity"
-        and finding.severity is AuditSeverity.ERROR
+        finding.code == "conflicting_trade_identity" and finding.severity is AuditSeverity.ERROR
         for finding in report.findings
     )
 
