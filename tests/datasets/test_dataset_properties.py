@@ -1,6 +1,7 @@
 from decimal import Decimal
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from grid_trade.datasets.canonical import (
     BookVisibilityTracker,
