@@ -1,0 +1,21 @@
+name: Format diagnostic
+
+on:
+  push:
+    branches: [grid-core]
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Ruff
+        run: python -m pip install ruff==0.15.22
+      - name: Format target and show diff
+        shell: bash
+        run: |
+          ruff format tests/execution/test_reconcile.py
+          git diff -- tests/execution/test_reconcile.py
