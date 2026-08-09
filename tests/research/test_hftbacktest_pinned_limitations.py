@@ -23,15 +23,29 @@ def test_pinned_runtime_fails_closed_on_exact_queue_terminal_edge() -> None:
     """
     fixture = MicrostructureFixture(
         snapshot=(
-            MicrostructureRow("snapshot_bid", 1_000_000_000, 1_000_000_000, Decimal("99.0"), Decimal("0.02")),
-            MicrostructureRow("snapshot_ask", 1_000_000_000, 1_000_000_000, Decimal("101.0"), Decimal("0.02")),
+            MicrostructureRow(
+                "snapshot_bid", 1_000_000_000, 1_000_000_000, Decimal("99.0"), Decimal("0.02")
+            ),
+            MicrostructureRow(
+                "snapshot_ask", 1_000_000_000, 1_000_000_000, Decimal("101.0"), Decimal("0.02")
+            ),
         ),
         feed=(
-            MicrostructureRow("depth_bid", 2_000_000_000, 2_000_000_000, Decimal("99.0"), Decimal("0.02")),
-            MicrostructureRow("depth_ask", 2_000_000_000, 2_000_000_000, Decimal("101.0"), Decimal("0.03")),
-            MicrostructureRow("trade_sell", 3_000_000_000, 3_000_000_000, Decimal("99.0"), Decimal("0.01")),
-            MicrostructureRow("trade_sell", 4_000_000_000, 4_000_000_000, Decimal("99.0"), Decimal("0.02")),
-            MicrostructureRow("trade_sell", 5_000_000_000, 5_000_000_000, Decimal("99.0"), Decimal("0.02")),
+            MicrostructureRow(
+                "depth_bid", 2_000_000_000, 2_000_000_000, Decimal("99.0"), Decimal("0.02")
+            ),
+            MicrostructureRow(
+                "depth_ask", 2_000_000_000, 2_000_000_000, Decimal("101.0"), Decimal("0.03")
+            ),
+            MicrostructureRow(
+                "trade_sell", 3_000_000_000, 3_000_000_000, Decimal("99.0"), Decimal("0.01")
+            ),
+            MicrostructureRow(
+                "trade_sell", 4_000_000_000, 4_000_000_000, Decimal("99.0"), Decimal("0.02")
+            ),
+            MicrostructureRow(
+                "trade_sell", 5_000_000_000, 5_000_000_000, Decimal("99.0"), Decimal("0.02")
+            ),
         ),
     )
     intent = PassiveOrderIntent(
