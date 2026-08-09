@@ -47,9 +47,10 @@ class TrendEstimate:
     def __post_init__(self) -> None:
         if self.z_score is not None and not self.z_score.is_finite():
             raise ValueError("z_score must be finite when available")
-        if self.score is not None:
-            if not self.score.is_finite() or not -_ONE <= self.score <= _ONE:
-                raise ValueError("score must be finite and within [-1, 1]")
+        if self.score is not None and (
+            not self.score.is_finite() or not -_ONE <= self.score <= _ONE
+        ):
+            raise ValueError("score must be finite and within [-1, 1]")
         available = self.z_score is not None and self.score is not None
         if self.ready != available:
             raise ValueError("ready must reflect score availability")
