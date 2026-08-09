@@ -10,7 +10,11 @@ from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.numeric import deterministic_decimal_context
 from grid_trade.risk.sizing import InventoryCapacity
 from grid_trade.strategy.adaptive_grid import AdaptiveGridPolicyConfig, AdaptiveStage
+from grid_trade.strategy.adaptive_ladder import AdaptiveLadderConfig
 from grid_trade.strategy.adaptive_signals import AdaptiveSignals
+from grid_trade.strategy.conditional_short import ShortOverlayConfig
+from grid_trade.strategy.funding_bias import FundingBiasConfig
+from grid_trade.strategy.inventory_target import InventoryTargetConfig
 
 _ZERO = Decimal(0)
 _ONE = Decimal(1)
@@ -128,7 +132,7 @@ def _materialize_quantity_config(
     *,
     usable_capacity: Decimal,
     venue_tick_size: Decimal,
-) -> tuple[object, object, object, object]:
+) -> tuple[AdaptiveLadderConfig, InventoryTargetConfig, ShortOverlayConfig, FundingBiasConfig]:
     with deterministic_decimal_context():
         template_capacity = template.ladder.max_abs_inventory
         _require_finite_positive(template_capacity, field="template max_abs_inventory")
