@@ -53,6 +53,34 @@ def test_missing_level_inside_new_top_n_boundary_is_confirmed_zero() -> None:
     assert removed.epoch_id == 0
 
 
+def test_confirmed_zero_is_retained_until_it_later_leaves_observable_range() -> None:
+    tracker = BookVisibilityTracker()
+    tracker.apply(
+        _snapshot(
+            bids=("100", "99", "98"),
+            asks=("101", "102", "103"),
+        )
+    )
+    tracker.apply(
+        _snapshot(
+            bids=("100", "98", "97"),
+            asks=("101", "102", "103"),
+        )
+    )
+
+    updates = tracker.apply(
+        _snapshot(
+            bids=("102", "101", "100"),
+            asks=("103", "104", "105"),
+        )
+    )
+
+    lost_zero = _find(updates, side=BookSide.BID, price="99")
+    assert lost_zero.change is VisibilityChange.VISIBILITY_LOST
+    assert lost_zero.quantity is None
+    assert lost_zero.epoch_id == 0
+
+
 def test_level_beyond_new_deep_boundary_becomes_visibility_lost_not_cancelled() -> None:
     tracker = BookVisibilityTracker()
     tracker.apply(
