@@ -4,7 +4,11 @@ from enum import StrEnum
 
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
-from grid_trade.strategy.grid_geometry import FixedLongGridConfig, build_long_grid_at_center
+from grid_trade.strategy.grid_geometry import (
+    FixedLongGridConfig,
+    build_long_grid_at_center,
+    ladder_economic_signature,
+)
 
 _BASIS_POINTS = Decimal(10_000)
 
@@ -127,21 +131,6 @@ def propose_dynamic_center(
     )
 
 
-def _economic_signature(
-    ladder: tuple[PassiveOrderIntent, ...],
-) -> tuple[tuple[str, int, Decimal, Decimal, bool], ...]:
-    return tuple(
-        (
-            order.side.value,
-            order.level,
-            order.price,
-            order.quantity,
-            order.reduce_only,
-        )
-        for order in ladder
-    )
-
-
 def decide_dynamic_center(
     snapshot: MarketSnapshot,
     state: DynamicCenterState,
@@ -180,7 +169,7 @@ def decide_dynamic_center(
         generation=candidate_generation,
         stage="s1",
     )
-    if _economic_signature(candidate_ladder) == _economic_signature(current_ladder):
+    if ladder_economic_signature(candidate_ladder) == ladder_economic_signature(current_ladder):
         return (
             CenterDecision(
                 previous_center=state.center,
