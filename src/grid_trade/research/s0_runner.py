@@ -5,7 +5,7 @@ from pathlib import Path
 
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent, ReconciliationPlan
-from grid_trade.domain.risk import RiskDecision, RiskLimits, RiskState
+from grid_trade.domain.risk import RiskDecision, RiskLimits, RiskReason, RiskState
 from grid_trade.evidence.events import EvidenceEvent, EvidenceKind, PnLBreakdown
 from grid_trade.evidence.ledger import evidence_digest
 from grid_trade.execution.reconcile import reconcile_passive_orders
@@ -31,6 +31,7 @@ class S0RunResult:
     open_order_count: int
     pnl: PnLBreakdown
     risk_passed: bool
+    risk_reasons: tuple[RiskReason, ...]
     deterministic: bool
     milestone_passed: bool
     production_authorized: bool = False
@@ -43,6 +44,8 @@ class S0RunResult:
             raise ValueError("S0 must never authorize production")
         if self.alpha_validated:
             raise ValueError("S0 must never claim alpha validation")
+        if self.risk_passed != (not self.risk_reasons):
+            raise ValueError("risk_passed must match an empty risk_reasons tuple")
         if self.milestone_passed != (self.risk_passed and self.deterministic):
             raise ValueError("milestone_passed must equal risk_passed and deterministic")
 
@@ -174,6 +177,22 @@ def _evidence_events(
     return tuple(events)
 
 
+def _projected_position_rejection(
+    decision: RiskDecision,
+    *,
+    proposed: tuple[PassiveOrderIntent, ...],
+    filtered: tuple[PassiveOrderIntent, ...],
+) -> RiskDecision:
+    if not decision.allow_new_risk or filtered == proposed:
+        return decision
+    return RiskDecision(
+        allow_new_risk=False,
+        cancel_all_passive=False,
+        target_flat=False,
+        reasons=(RiskReason.MAX_POSITION,),
+    )
+
+
 def run_s0(
     *,
     run_id: str,
@@ -200,6 +219,11 @@ def run_s0(
         risk_limits,
         risk_decision,
         proposed_ladder,
+    )
+    risk_decision = _projected_position_rejection(
+        risk_decision,
+        proposed=proposed_ladder,
+        filtered=filtered_ladder,
     )
     risk_passed = risk_decision.allow_new_risk and filtered_ladder == proposed_ladder
     desired_ladder = filtered_ladder if risk_passed else ()
@@ -242,6 +266,7 @@ def run_s0(
         open_order_count=replay_summary.open_order_count,
         pnl=pnl,
         risk_passed=risk_passed,
+        risk_reasons=risk_decision.reasons,
         deterministic=deterministic,
         milestone_passed=risk_passed and deterministic,
     )
