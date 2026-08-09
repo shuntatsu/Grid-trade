@@ -29,6 +29,31 @@ Primary research sequence:
 
 Every stage must demonstrate incremental value in walk-forward out-of-sample evaluation. Complexity that does not improve robust results is removed.
 
+## Milestone 1 — deterministic S0 foundation
+
+The `grid-core` implementation branch now contains the first research foundation:
+
+- immutable causal market and passive-order contracts;
+- deterministic S0 fixed-long grid geometry;
+- cancel-before-replace working-order reconciliation;
+- partial-fill and duplicate-order fail-closed handling;
+- an independent hard risk controller which can block new risk or require flattening;
+- canonical JSONL evidence with SHA-256 run digests;
+- a pinned `hftbacktest==2.4.4` microstructure replay adapter using risk-adverse queueing, partial fills, explicit tick/lot sizes, and finite latency-aware replay timeouts;
+- a pinned `nautilus_trader==1.230.0` construct-only mapper for GTC post-only limit orders;
+- a deterministic S0 runner which performs duplicate replay and refuses to claim production authorization or alpha validation.
+
+The checked-in synthetic S0 fixture is execution-mechanics evidence only. It validates deterministic order generation, queue-sensitive partial fills, risk gating, evidence closure, and runtime integration. It **does not** establish:
+
+- historical Hyperliquid profitability;
+- an adaptive-grid edge;
+- value from the conditional short overlay;
+- realistic historical queue position for Hyperliquid;
+- production readiness or live-capital safety;
+- permission to trade real funds.
+
+Historical strategy promotion requires later Tier-2 market-data replay and walk-forward out-of-sample evidence under frozen assumptions.
+
 ## Execution and research architecture
 
 Planned OSS reuse:
@@ -58,7 +83,7 @@ No strategy result alone authorizes live trading. Production requires separate e
 
 ## Design
 
-The initial design specification is maintained under `docs/superpowers/specs/`.
+The initial design specification is maintained under `docs/superpowers/specs/`. The Milestone 1 implementation plan is maintained under `docs/superpowers/plans/`.
 
 ## License
 
