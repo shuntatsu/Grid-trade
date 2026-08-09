@@ -6,6 +6,7 @@ on:
     paths:
       - "src/grid_trade/application/**"
       - "src/grid_trade/calibration/**"
+      - "src/grid_trade/datasets/**"
       - "src/grid_trade/domain/**"
       - "src/grid_trade/evidence/**"
       - "src/grid_trade/execution/**"
@@ -16,12 +17,14 @@ on:
       - "tests/application/**"
       - "tests/architecture/**"
       - "tests/calibration/**"
+      - "tests/datasets/**"
       - "tests/evidence/**"
       - "tests/execution/**"
       - "tests/integrations/**"
       - "tests/research/**"
       - "tests/risk/**"
       - "tests/strategy/**"
+      - "tests/fixtures/hyperliquid/**"
       - "tests/fixtures/microstructure/**"
       - "pyproject.toml"
       - "uv.lock"
@@ -31,6 +34,7 @@ on:
     paths:
       - "src/grid_trade/application/**"
       - "src/grid_trade/calibration/**"
+      - "src/grid_trade/datasets/**"
       - "src/grid_trade/domain/**"
       - "src/grid_trade/evidence/**"
       - "src/grid_trade/execution/**"
@@ -41,12 +45,14 @@ on:
       - "tests/application/**"
       - "tests/architecture/**"
       - "tests/calibration/**"
+      - "tests/datasets/**"
       - "tests/evidence/**"
       - "tests/execution/**"
       - "tests/integrations/**"
       - "tests/research/**"
       - "tests/risk/**"
       - "tests/strategy/**"
+      - "tests/fixtures/hyperliquid/**"
       - "tests/fixtures/microstructure/**"
       - "pyproject.toml"
       - "uv.lock"
@@ -56,7 +62,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: research-v6-${{ github.workflow }}-${{ github.ref }}
+  group: research-v7-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -103,6 +109,25 @@ jobs:
           uv run --frozen --extra dev --extra research mypy
           src/grid_trade/research/calibrated_adaptive_runner.py
           tests/research/test_calibrated_adaptive_runner.py
+      - name: Type check Tier-2 data and replay boundary
+        run: >-
+          uv run --frozen --extra dev --extra research mypy
+          src/grid_trade/datasets
+          src/grid_trade/integrations/hyperliquid
+          src/grid_trade/research/hftbacktest_adapter.py
+          src/grid_trade/research/replay_attribution.py
+          src/grid_trade/research/tier2_replay.py
+          src/grid_trade/research/tier2_fixture_runner.py
+          tests/datasets
+          tests/integrations/hyperliquid
+          tests/research/test_canonical_hftbacktest_adapter.py
+          tests/research/test_hftbacktest_pinned_limitations.py
+          tests/research/test_replay_attribution.py
+          tests/research/test_replay_visibility_attribution.py
+          tests/research/test_tier2_causality.py
+          tests/research/test_tier2_replay.py
+          tests/research/test_tier2_replay_determinism.py
+          tests/research/test_tier2_visibility_boundary.py
       - name: Verify S0 evidence across fresh processes
         shell: bash
         run: |
@@ -151,3 +176,11 @@ jobs:
           test -n "$first"
           test "$first" = "$second"
           echo "Calibrated adaptive evidence digest: $first"
+      - name: Verify Tier-2 evidence across fresh processes
+        shell: bash
+        run: |
+          first="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.tier2_fixture_runner)"
+          second="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.tier2_fixture_runner)"
+          test -n "$first"
+          test "$first" = "$second"
+          echo "Tier-2 evidence digest: $first"
