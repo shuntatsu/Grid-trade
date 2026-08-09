@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, grid-core, s2-volatility-spacing]
+    branches: [main, grid-core, adaptive-grid-completion]
   pull_request:
     branches: [main, grid-core]
 
