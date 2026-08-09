@@ -63,11 +63,7 @@ def apply_funding_bias(
         -_ONE,
         _ONE,
     )
-    target_shift = (
-        -normalized_funding
-        * config.max_abs_target
-        * config.max_target_shift_fraction
-    )
+    target_shift = -normalized_funding * config.max_abs_target * config.max_target_shift_fraction
     requested_target = _clip(
         target + target_shift,
         -config.max_abs_target,
