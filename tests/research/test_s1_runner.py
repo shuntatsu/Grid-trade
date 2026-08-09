@@ -15,14 +15,14 @@ pytestmark = pytest.mark.research
 _START = datetime(2026, 8, 9, 9, 0, tzinfo=UTC)
 
 
-def _snapshot(index: int, mid: str) -> MarketSnapshot:
+def _snapshot(index: int, mid: str, *, position: str = "0") -> MarketSnapshot:
     value = Decimal(mid)
     return MarketSnapshot(
         timestamp=_START + timedelta(seconds=index),
         best_bid=value - Decimal("0.01"),
         best_ask=value + Decimal("0.01"),
         realized_volatility=Decimal("0.01"),
-        position_quantity=Decimal("0"),
+        position_quantity=Decimal(position),
         source_id=f"fixture:s1:{index}",
     )
 
@@ -90,7 +90,31 @@ def test_s1_tracks_center_without_turning_s0_into_dynamic_baseline() -> None:
     assert result.cancel_count == 6
     assert result.submit_count == 9
     assert result.queue_reset_count == 2
+    assert result.risk_rejection_count == 0
+    assert result.risk_reasons_seen == ()
     assert result.s1_mean_abs_center_error_bps < result.s0_mean_abs_center_error_bps
+
+
+def test_risk_rejection_is_explicit_and_does_not_count_as_reanchor_queue_reset() -> None:
+    result = run_s1_comparison(
+        run_id="s1-risk-rejection",
+        snapshots=(
+            _snapshot(0, "100.00"),
+            _snapshot(1, "101.00", position="0.98"),
+        ),
+        grid_config=_grid_config(),
+        center_config=DynamicCenterConfig(Decimal("1"), Decimal("50")),
+        risk_limits=_limits(),
+    )
+
+    assert result.s1_center_path == (Decimal("100.00"), Decimal("100.00"))
+    assert result.s1_generation_count == 0
+    assert result.s1_reanchor_count == 0
+    assert result.queue_reset_count == 0
+    assert result.cancel_count == 3
+    assert result.submit_count == 3
+    assert result.risk_rejection_count == 1
+    assert result.risk_reasons_seen == ("max_position",)
 
 
 def test_s1_controlled_runner_is_exactly_deterministic_and_no_go() -> None:
