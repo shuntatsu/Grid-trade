@@ -79,12 +79,8 @@ def _book(timestamp_ns: int) -> canonical.CanonicalEventEnvelope:
         raw_record_ordinal=1,
         normalization_schema_version="canonical-v1",
         payload=canonical.CanonicalBookSnapshot(
-            bids=(
-                canonical.CanonicalBookLevel(Decimal("99"), Decimal("1"), 1),
-            ),
-            asks=(
-                canonical.CanonicalBookLevel(Decimal("101"), Decimal("1"), 1),
-            ),
+            bids=(canonical.CanonicalBookLevel(Decimal("99"), Decimal("1"), 1),),
+            asks=(canonical.CanonicalBookLevel(Decimal("101"), Decimal("1"), 1),),
         ),
     )
 
