@@ -124,7 +124,11 @@ def test_ladder_cannot_add_beyond_strategy_inventory_cap() -> None:
         stage="s3",
     )
     add_long = sum(
-        (order.quantity for order in ladder if order.side is OrderSide.BUY and not order.reduce_only),
+        (
+            order.quantity
+            for order in ladder
+            if order.side is OrderSide.BUY and not order.reduce_only
+        ),
         Decimal(0),
     )
     assert add_long == Decimal("0.01")
