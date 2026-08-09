@@ -113,7 +113,8 @@ def test_effective_reanchor_cancels_then_submits_same_decision_without_re_evalua
         working_orders=working,
     )
 
-    assert first.next_state.generation == 1
+    assert first.decision.effective_generation == 1
+    assert first.next_state == state
     assert first.reconciliation.cancel == tuple(sorted(order.client_order_id for order in working))
     assert first.reconciliation.submit == ()
 
@@ -126,7 +127,7 @@ def test_effective_reanchor_cancels_then_submits_same_decision_without_re_evalua
     )
 
     assert second.decision == first.decision
-    assert second.next_state == first.next_state
+    assert second.next_state == DynamicCenterState(center=Decimal("100.5"), generation=1)
     assert second.desired_ladder == first.desired_ladder
     assert second.reconciliation.cancel == ()
     assert second.reconciliation.submit == first.desired_ladder
@@ -177,6 +178,7 @@ def test_partial_fill_old_generation_never_submits_replacement_same_cycle() -> N
         working_orders=working,
     )
 
+    assert transition.next_state == state
     assert transition.reconciliation.cancel
     assert transition.reconciliation.submit == ()
 
@@ -221,4 +223,5 @@ def test_replacement_open_order_budget_counts_old_strategy_orders_as_replaced() 
     )
 
     assert transition.risk_decision.allow_new_risk is True
+    assert transition.next_state == state
     assert transition.reconciliation.cancel
