@@ -53,7 +53,7 @@ def test_runtime_identity_fails_closed_on_version_mismatch(monkeypatch: pytest.M
         lambda _: "9.9.9",
     )
 
-    with pytest.raises(RuntimeError, match="2.4.4"):
+    with pytest.raises(RuntimeError, match=r"2\.4\.4"):
         require_hftbacktest_runtime()
 
 
