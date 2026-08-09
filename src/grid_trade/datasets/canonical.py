@@ -27,6 +27,12 @@ class VisibilityChange(StrEnum):
     REESTABLISHED = "reestablished"
 
 
+class _VisibilityState(StrEnum):
+    VISIBLE = "visible"
+    ZERO = "zero"
+    LOST = "lost"
+
+
 _EVENT_TYPE_PRECEDENCE: dict[CanonicalEventType, int] = {
     CanonicalEventType.BOOK_SNAPSHOT: 0,
     CanonicalEventType.TRADE: 1,
@@ -187,12 +193,11 @@ class VisibleDepthUpdate:
 
 class BookVisibilityTracker:
     def __init__(self) -> None:
-        self._visible: dict[BookSide, dict[Decimal, CanonicalBookLevel]] = {
+        self._states: dict[BookSide, dict[Decimal, _VisibilityState]] = {
             BookSide.BID: {},
             BookSide.ASK: {},
         }
         self._epochs: dict[tuple[BookSide, Decimal], int] = {}
-        self._inactive: set[tuple[BookSide, Decimal]] = set()
 
     @staticmethod
     def _levels_for_side(
@@ -212,48 +217,74 @@ class BookVisibilityTracker:
         for side in (BookSide.BID, BookSide.ASK):
             current_levels = self._levels_for_side(snapshot, side)
             current = {level.price: level for level in current_levels}
-            previous = self._visible[side]
+            states = self._states[side]
             deep_boundary = current_levels[-1].price if current_levels else None
 
-            for price in previous:
+            for price in tuple(states):
                 if price in current:
                     continue
                 key = (side, price)
+                state = states[price]
                 epoch_id = self._epochs.setdefault(key, 0)
-                if deep_boundary is not None and self._inside_deep_boundary(
+                inside_boundary = deep_boundary is not None and self._inside_deep_boundary(
                     side=side,
                     price=price,
                     deep_boundary=deep_boundary,
-                ):
-                    change = VisibilityChange.CONFIRMED_ZERO
-                    quantity: Decimal | None = Decimal(0)
-                    order_count: int | None = 0
-                else:
-                    change = VisibilityChange.VISIBILITY_LOST
-                    quantity = None
-                    order_count = None
-                self._inactive.add(key)
-                updates.append(
-                    VisibleDepthUpdate(
-                        side=side,
-                        price=price,
-                        quantity=quantity,
-                        order_count=order_count,
-                        epoch_id=epoch_id,
-                        change=change,
-                    )
                 )
+
+                if inside_boundary:
+                    if state is _VisibilityState.VISIBLE:
+                        states[price] = _VisibilityState.ZERO
+                        updates.append(
+                            VisibleDepthUpdate(
+                                side=side,
+                                price=price,
+                                quantity=Decimal(0),
+                                order_count=0,
+                                epoch_id=epoch_id,
+                                change=VisibilityChange.CONFIRMED_ZERO,
+                            )
+                        )
+                    elif state is _VisibilityState.LOST:
+                        epoch_id += 1
+                        self._epochs[key] = epoch_id
+                        states[price] = _VisibilityState.ZERO
+                        updates.append(
+                            VisibleDepthUpdate(
+                                side=side,
+                                price=price,
+                                quantity=Decimal(0),
+                                order_count=0,
+                                epoch_id=epoch_id,
+                                change=VisibilityChange.REESTABLISHED,
+                            )
+                        )
+                    continue
+
+                if state is not _VisibilityState.LOST:
+                    states[price] = _VisibilityState.LOST
+                    updates.append(
+                        VisibleDepthUpdate(
+                            side=side,
+                            price=price,
+                            quantity=None,
+                            order_count=None,
+                            epoch_id=epoch_id,
+                            change=VisibilityChange.VISIBILITY_LOST,
+                        )
+                    )
 
             for level in current_levels:
                 key = (side, level.price)
-                if key in self._inactive:
+                state = states.get(level.price)
+                if state in {_VisibilityState.ZERO, _VisibilityState.LOST}:
                     epoch_id = self._epochs.get(key, 0) + 1
                     self._epochs[key] = epoch_id
-                    self._inactive.remove(key)
                     change = VisibilityChange.REESTABLISHED
                 else:
                     epoch_id = self._epochs.setdefault(key, 0)
                     change = VisibilityChange.UPSERT
+                states[level.price] = _VisibilityState.VISIBLE
                 updates.append(
                     VisibleDepthUpdate(
                         side=side,
@@ -264,7 +295,6 @@ class BookVisibilityTracker:
                         change=change,
                     )
                 )
-            self._visible[side] = current
         return tuple(updates)
 
 
