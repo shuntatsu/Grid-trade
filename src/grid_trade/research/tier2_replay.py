@@ -466,8 +466,7 @@ def _evidence(
                 "alpha_validated": False,
                 "economics_validated": False,
                 "economic_validation_note": (
-                    "Observed fills/funding/fee assumptions are retained; complete PnL attribution "
-                    "is not promoted until an explicit markout/adverse-selection method is declared."
+                    "Full PnL attribution stays disabled until a declared markout method exists."
                 ),
             },
         )
