@@ -53,7 +53,7 @@ def test_ask_size_increase_is_negative_ofi() -> None:
 
 def test_bid_price_improvement_uses_new_bid_queue() -> None:
     previous = _book(minute=0, bid="99", bid_size="7")
-    current = _book(minute=1, bid="100", bid_size="4", ask="102")
+    current = _book(minute=1, bid="100", bid_size="4")
 
     assert compute_ofi(previous, current) == Decimal("4")
 
