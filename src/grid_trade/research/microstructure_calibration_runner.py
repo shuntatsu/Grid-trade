@@ -23,6 +23,8 @@ from grid_trade.evidence.ledger import evidence_digest
 
 _RUN_ID = "microstructure-calibration-deterministic-fixture"
 _BASE_TIME = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
+_ZERO = Decimal(0)
+_ONE = Decimal(1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +58,16 @@ class MicrostructureCalibrationRunResult:
             raise ValueError("milestone_passed must match deterministic calibration gates")
         if self.economics_validated or self.production_authorized or self.alpha_validated:
             raise ValueError("microstructure calibration research must remain NO-GO")
+
+
+@dataclass(frozen=True, slots=True)
+class _CalibrationRecord:
+    generation: int
+    estimate: MicrostructureCalibrationEstimate
+
+    def __post_init__(self) -> None:
+        if self.generation <= 0:
+            raise ValueError("generation must be positive")
 
 
 def _time(minutes: int) -> datetime:
@@ -158,10 +170,10 @@ def _run_path(
     instrument_id: str,
     price_scale: Decimal,
     size_scale: Decimal,
-) -> tuple[MicrostructureCalibrationEstimate, ...]:
+) -> tuple[_CalibrationRecord, ...]:
     config = _config()
     state = MicrostructureCalibrationState()
-    estimates: list[MicrostructureCalibrationEstimate] = []
+    records: list[_CalibrationRecord] = []
     markouts = _markouts(price_scale)
     labels = _ofi_labels()
 
@@ -184,18 +196,65 @@ def _run_path(
             config=config,
         )
         state = update.next_state
-        estimates.append(update.estimate)
+        records.append(
+            _CalibrationRecord(
+                generation=state.generation,
+                estimate=update.estimate,
+            )
+        )
 
-    return tuple(estimates)
+    return tuple(records)
 
 
-def _calibration_payload(estimate: MicrostructureCalibrationEstimate) -> dict[str, object]:
+def _config_payload(config: MicrostructureCalibrationConfig) -> dict[str, object]:
     return {
+        "intensity": {
+            "min_buckets": config.intensity.min_buckets,
+            "min_total_arrivals": config.intensity.min_total_arrivals,
+            "k_min": config.intensity.k_min,
+            "k_max": config.intensity.k_max,
+            "k_steps": config.intensity.k_steps,
+            "min_log_likelihood_improvement": config.intensity.min_log_likelihood_improvement,
+        },
+        "ofi_impact": {
+            "window": config.ofi_impact.window,
+            "min_samples": config.ofi_impact.min_samples,
+            "min_abs_feature_energy": config.ofi_impact.min_abs_feature_energy,
+            "max_abs_beta": config.ofi_impact.max_abs_beta,
+            "score_scale_vol_units": config.ofi_impact.score_scale_vol_units,
+        },
+        "execution_cost": {
+            "markout_window": config.execution_cost.markout_window,
+            "min_markout_samples": config.execution_cost.min_markout_samples,
+            "adverse_quantile": config.execution_cost.adverse_quantile,
+            "uncertainty_buffer": config.execution_cost.uncertainty_buffer,
+            "fallback_adverse_cost": config.execution_cost.fallback_adverse_cost,
+        },
+        "min_microstructure_quality": config.min_microstructure_quality,
+    }
+
+
+def _ofi_quality(estimate: MicrostructureCalibrationEstimate) -> Decimal | None:
+    if not estimate.ofi_impact.ready or estimate.ofi_impact.fit_r2 is None:
+        return None
+    return min(_ONE, max(_ZERO, estimate.ofi_impact.fit_r2))
+
+
+def _calibration_payload(
+    record: _CalibrationRecord,
+    *,
+    config: MicrostructureCalibrationConfig,
+) -> dict[str, object]:
+    estimate = record.estimate
+    return {
+        "state_generation": record.generation,
+        "frozen_config": _config_payload(config),
         "intensity": {
             "ready": estimate.intensity.ready,
             "A": estimate.intensity.A,
             "k": estimate.intensity.k,
             "e_fold_distance_vol_units": estimate.intensity.e_fold_distance_vol_units,
+            "log_likelihood_improvement": estimate.intensity.log_likelihood_improvement,
             "quality": estimate.intensity.quality,
             "sample_count": estimate.intensity.sample_count,
             "total_arrivals": estimate.intensity.total_arrivals,
@@ -207,6 +266,7 @@ def _calibration_payload(estimate: MicrostructureCalibrationEstimate) -> dict[st
             "round_trip_fee": estimate.execution.round_trip_fee,
             "tick_floor": estimate.execution.tick_floor,
             "markout_ready": estimate.execution.markout_ready,
+            "used_fallback": estimate.execution.used_fallback,
             "sample_count": estimate.execution.sample_count,
         },
         "current_normalized_ofi": estimate.current_normalized_ofi,
@@ -214,6 +274,7 @@ def _calibration_payload(estimate: MicrostructureCalibrationEstimate) -> dict[st
             "ready": estimate.ofi_impact.ready,
             "beta": estimate.ofi_impact.beta,
             "fit_r2": estimate.ofi_impact.fit_r2,
+            "quality": _ofi_quality(estimate),
             "sample_count": estimate.ofi_impact.sample_count,
         },
         "predicted_relative_displacement": estimate.predicted_relative_displacement,
@@ -230,11 +291,12 @@ def _calibration_payload(estimate: MicrostructureCalibrationEstimate) -> dict[st
 
 def _evidence_events(
     *,
-    estimates: tuple[MicrostructureCalibrationEstimate, ...],
+    records: tuple[_CalibrationRecord, ...],
     deterministic: bool,
     symbol_invariant: bool,
     scale_invariant: bool,
 ) -> tuple[EvidenceEvent, ...]:
+    config = _config()
     books = _books(
         instrument_id="GENERIC-PERP",
         price_scale=Decimal("1"),
@@ -242,7 +304,7 @@ def _evidence_events(
     )
     events: list[EvidenceEvent] = []
 
-    for book, estimate in zip(books, estimates, strict=True):
+    for book, record in zip(books, records, strict=True):
         events.append(
             EvidenceEvent.create(
                 run_id=_RUN_ID,
@@ -266,12 +328,12 @@ def _evidence_events(
                 sequence=len(events),
                 timestamp=book.timestamp,
                 kind=EvidenceKind.MICROSTRUCTURE_CALIBRATION,
-                payload=_calibration_payload(estimate),
+                payload=_calibration_payload(record, config=config),
             )
         )
 
-    ready_step_count = sum(1 for estimate in estimates if estimate.readiness.ready)
-    final_ready = estimates[-1].readiness.ready
+    ready_step_count = sum(1 for record in records if record.estimate.readiness.ready)
+    final_ready = records[-1].estimate.readiness.ready
     milestone_passed = deterministic and symbol_invariant and scale_invariant and final_ready
     events.append(
         EvidenceEvent.create(
@@ -280,9 +342,11 @@ def _evidence_events(
             timestamp=books[-1].timestamp,
             kind=EvidenceKind.RUN_SUMMARY,
             payload={
-                "step_count": len(estimates),
+                "step_count": len(records),
                 "ready_step_count": ready_step_count,
                 "final_ready": final_ready,
+                "final_state_generation": records[-1].generation,
+                "frozen_config": _config_payload(config),
                 "deterministic": deterministic,
                 "symbol_invariant": symbol_invariant,
                 "scale_invariant": scale_invariant,
@@ -322,11 +386,11 @@ def run_checked_in_microstructure_calibration() -> MicrostructureCalibrationRunR
     deterministic = baseline == repeated
     symbol_invariant = baseline == renamed
     scale_invariant = baseline == scaled
-    ready_step_count = sum(1 for estimate in baseline if estimate.readiness.ready)
-    final_ready = baseline[-1].readiness.ready
+    ready_step_count = sum(1 for record in baseline if record.estimate.readiness.ready)
+    final_ready = baseline[-1].estimate.readiness.ready
     milestone_passed = deterministic and symbol_invariant and scale_invariant and final_ready
     events = _evidence_events(
-        estimates=baseline,
+        records=baseline,
         deterministic=deterministic,
         symbol_invariant=symbol_invariant,
         scale_invariant=scale_invariant,
