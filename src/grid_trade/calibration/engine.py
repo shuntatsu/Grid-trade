@@ -66,7 +66,7 @@ class CalibrationEngineState:
                 raise ValueError("generation zero requires pristine calibration state")
             return
 
-        if not identity_initialized or not timestamp_initialized:
+        if self.source_id is None or self.instrument_id is None or self.last_timestamp is None:
             raise ValueError("positive generation requires initialized identity and timestamp")
         if not self.source_id.strip() or not self.instrument_id.strip():
             raise ValueError("initialized source_id and instrument_id must be non-empty")
