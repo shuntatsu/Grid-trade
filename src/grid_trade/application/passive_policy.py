@@ -1,5 +1,4 @@
 from dataclasses import dataclass, replace
-from typing import Generic, TypeVar
 
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent, ReconciliationPlan, WorkingOrder
@@ -7,12 +6,9 @@ from grid_trade.domain.risk import RiskDecision, RiskLimits, RiskState
 from grid_trade.execution.reconcile import reconcile_passive_orders
 from grid_trade.risk.controller import assess_passive_ladder_risk
 
-StateT = TypeVar("StateT")
-DecisionT = TypeVar("DecisionT")
-
 
 @dataclass(frozen=True, slots=True)
-class PassivePolicyTransition(Generic[StateT, DecisionT]):
+class PassivePolicyTransition[StateT, DecisionT]:
     decision: DecisionT
     previous_state: StateT
     candidate_state: StateT
@@ -69,7 +65,7 @@ def _accepted_ladder(
     return False, tuple(order for order in filtered_ladder if order.reduce_only)
 
 
-def transition_passive_policy(
+def transition_passive_policy[StateT, DecisionT](
     *,
     decision: DecisionT,
     previous_state: StateT,
@@ -109,7 +105,7 @@ def transition_passive_policy(
     )
 
 
-def continue_passive_policy_reconciliation(
+def continue_passive_policy_reconciliation[StateT, DecisionT](
     transition: PassivePolicyTransition[StateT, DecisionT],
     *,
     snapshot: MarketSnapshot,
