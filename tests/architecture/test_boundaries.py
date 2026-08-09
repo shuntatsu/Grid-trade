@@ -66,6 +66,14 @@ def _python_files(layer: str) -> tuple[Path, ...]:
                 "grid_trade.strategy",
             ),
         ),
+        (
+            "application",
+            (
+                "grid_trade.evidence",
+                "grid_trade.integrations",
+                "grid_trade.research",
+            ),
+        ),
     ],
 )
 def test_core_layer_dependency_direction(
