@@ -1,5 +1,5 @@
 import datetime as dt
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -54,6 +54,27 @@ def test_top_of_book_requires_valid_uncrossed_positive_book() -> None:
             best_ask=Decimal("101"),
             ask_size=Decimal("6"),
         )
+
+
+def test_top_of_book_mid_is_independent_of_ambient_decimal_precision() -> None:
+    book = TopOfBookObservation(
+        timestamp=_time(),
+        source_id="fixture",
+        instrument_id="AAA-PERP",
+        best_bid=Decimal("1.23456789123456789"),
+        bid_size=Decimal("4"),
+        best_ask=Decimal("1.23456799123456789"),
+        ask_size=Decimal("6"),
+    )
+
+    with localcontext() as context:
+        context.prec = 10
+        low = book.mid
+    with localcontext() as context:
+        context.prec = 50
+        high = book.mid
+
+    assert low == high
 
 
 def test_markout_maturity_must_not_precede_fill() -> None:
