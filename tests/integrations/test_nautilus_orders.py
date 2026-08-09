@@ -13,14 +13,16 @@ pytestmark = pytest.mark.research
 
 
 def _runtime_objects() -> tuple[object, object]:
-    from nautilus_trader.common import Clock, OrderFactory
-    from nautilus_trader.model import InstrumentId, Price, Quantity, StrategyId, TraderId
+    from nautilus_trader.common.component import TestClock
+    from nautilus_trader.common.factories import OrderFactory
+    from nautilus_trader.model.identifiers import InstrumentId, StrategyId, TraderId
+    from nautilus_trader.model.objects import Price, Quantity
 
     strategy = SimpleNamespace(
         order_factory=OrderFactory(
             TraderId("TRADER-001"),
             StrategyId("GRID-001"),
-            Clock.new_test(),
+            TestClock(),
         ),
     )
     instrument = SimpleNamespace(
@@ -64,8 +66,9 @@ def test_runtime_identity_fails_closed_on_version_mismatch(monkeypatch: pytest.M
 
 
 def test_builds_buy_gtc_post_only_limit_order_without_submission() -> None:
-    from nautilus_trader.model import OrderSide as NautilusOrderSide
-    from nautilus_trader.model import Price, Quantity, TimeInForce
+    from nautilus_trader.model.enums import OrderSide as NautilusOrderSide
+    from nautilus_trader.model.enums import TimeInForce
+    from nautilus_trader.model.objects import Price, Quantity
 
     strategy, instrument = _runtime_objects()
     order = build_nautilus_post_only_order(
@@ -83,7 +86,7 @@ def test_builds_buy_gtc_post_only_limit_order_without_submission() -> None:
 
 
 def test_preserves_sell_and_reduce_only_flags() -> None:
-    from nautilus_trader.model import OrderSide as NautilusOrderSide
+    from nautilus_trader.model.enums import OrderSide as NautilusOrderSide
 
     strategy, instrument = _runtime_objects()
     order = build_nautilus_post_only_order(
