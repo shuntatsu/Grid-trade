@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import pairwise
 
 from grid_trade.calibration.contracts import CalibrationObservation
 
@@ -51,9 +52,8 @@ class VolatilityEstimate:
     def __post_init__(self) -> None:
         if self.sample_count < 0:
             raise ValueError("sample_count must be non-negative")
-        if self.scale is not None:
-            if not self.scale.is_finite() or self.scale < 0:
-                raise ValueError("scale must be finite and non-negative")
+        if self.scale is not None and (not self.scale.is_finite() or self.scale < 0):
+            raise ValueError("scale must be finite and non-negative")
         if self.ready != (self.scale is not None):
             raise ValueError("ready must reflect scale availability")
 
@@ -66,7 +66,7 @@ def update_robust_volatility(
     prices = (*state.prices, observation.mid)[-(config.window + 1) :]
     next_state = RobustVolatilityState(prices=prices)
 
-    returns = tuple((current / previous).ln() for previous, current in zip(prices, prices[1:]))
+    returns = tuple((current / previous).ln() for previous, current in pairwise(prices))
     sample_count = len(returns)
     if sample_count < config.min_samples:
         return next_state, VolatilityEstimate(scale=None, sample_count=sample_count, ready=False)
