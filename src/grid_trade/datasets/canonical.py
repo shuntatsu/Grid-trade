@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from itertools import pairwise
 
 
 class CanonicalEventType(StrEnum):
@@ -78,9 +79,9 @@ class CanonicalBookSnapshot:
             raise ValueError("bids must not contain duplicate prices")
         if len(set(ask_prices)) != len(ask_prices):
             raise ValueError("asks must not contain duplicate prices")
-        if any(left <= right for left, right in zip(bid_prices, bid_prices[1:], strict=False)):
+        if any(left <= right for left, right in pairwise(bid_prices)):
             raise ValueError("bids must be strictly descending by price")
-        if any(left >= right for left, right in zip(ask_prices, ask_prices[1:], strict=False)):
+        if any(left >= right for left, right in pairwise(ask_prices)):
             raise ValueError("asks must be strictly ascending by price")
         if self.bids and self.asks and self.bids[0].price >= self.asks[0].price:
             raise ValueError("book must not be crossed or locked")
@@ -131,10 +132,7 @@ class CanonicalEventEnvelope:
 
     def __post_init__(self) -> None:
         _require_non_empty(self.instrument, field="instrument")
-        _require_non_empty(
-            self.normalization_schema_version,
-            field="normalization_schema_version",
-        )
+        _require_non_empty(self.normalization_schema_version, field="normalization_schema_version")
         _require_sha256(self.raw_object_sha256)
         if self.exchange_ts_ns < 0:
             raise ValueError("exchange_ts_ns must be non-negative")
@@ -156,9 +154,7 @@ class CanonicalEventEnvelope:
             raise ValueError("payload type must match declared event_type")
 
 
-def canonical_event_sort_key(
-    event: CanonicalEventEnvelope,
-) -> tuple[int, int, int, int, str, int]:
+def canonical_event_sort_key(event: CanonicalEventEnvelope) -> tuple[int, int, int, int, str, int]:
     sequence_missing = int(event.source_sequence is None)
     sequence_value = 0 if event.source_sequence is None else event.source_sequence
     return (
@@ -206,19 +202,13 @@ class BookVisibilityTracker:
         return snapshot.bids if side is BookSide.BID else snapshot.asks
 
     @staticmethod
-    def _inside_deep_boundary(
-        *,
-        side: BookSide,
-        price: Decimal,
-        deep_boundary: Decimal,
-    ) -> bool:
+    def _inside_deep_boundary(*, side: BookSide, price: Decimal, deep_boundary: Decimal) -> bool:
         if side is BookSide.BID:
             return price >= deep_boundary
         return price <= deep_boundary
 
     def apply(self, snapshot: CanonicalBookSnapshot) -> tuple[VisibleDepthUpdate, ...]:
         updates: list[VisibleDepthUpdate] = []
-
         for side in (BookSide.BID, BookSide.ASK):
             current_levels = self._levels_for_side(snapshot, side)
             current = {level.price: level for level in current_levels}
@@ -274,9 +264,7 @@ class BookVisibilityTracker:
                         change=change,
                     )
                 )
-
             self._visible[side] = current
-
         return tuple(updates)
 
 
