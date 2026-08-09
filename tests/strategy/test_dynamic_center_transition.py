@@ -5,7 +5,10 @@ from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import WorkingOrder
 from grid_trade.domain.risk import RiskLimits, RiskReason, RiskState
 from grid_trade.strategy.dynamic_center import DynamicCenterConfig, DynamicCenterState
-from grid_trade.strategy.dynamic_center_transition import transition_dynamic_center
+from grid_trade.strategy.dynamic_center_transition import (
+    continue_dynamic_center_reconciliation,
+    transition_dynamic_center,
+)
 from grid_trade.strategy.fixed_grid import FixedLongGridConfig
 from grid_trade.strategy.grid_geometry import build_long_grid_at_center
 
@@ -96,7 +99,7 @@ def test_projected_position_rejection_does_not_commit_proposed_center() -> None:
     assert transition.reconciliation.submit == ()
 
 
-def test_effective_reanchor_cancels_old_generation_before_submission() -> None:
+def test_effective_reanchor_cancels_then_submits_same_decision_without_re_evaluation() -> None:
     state = DynamicCenterState(center=Decimal("100"), generation=0)
     working = _working_generation(state)
 
@@ -114,18 +117,13 @@ def test_effective_reanchor_cancels_old_generation_before_submission() -> None:
     assert first.reconciliation.cancel == tuple(sorted(order.client_order_id for order in working))
     assert first.reconciliation.submit == ()
 
-    second = transition_dynamic_center(
-        snapshot=_snapshot(),
-        state=state,
-        center_config=DynamicCenterConfig(Decimal("1"), Decimal("50")),
-        grid_config=_grid_config(),
-        risk_limits=_limits(),
-        risk_state=_risk_state(open_orders=0),
-        working_orders=(),
-    )
+    second = continue_dynamic_center_reconciliation(first, working_orders=())
 
+    assert second.decision == first.decision
+    assert second.next_state == first.next_state
+    assert second.desired_ladder == first.desired_ladder
     assert second.reconciliation.cancel == ()
-    assert second.reconciliation.submit == second.desired_ladder
+    assert second.reconciliation.submit == first.desired_ladder
     assert all(order.generation == 1 for order in second.reconciliation.submit)
 
 
@@ -164,3 +162,27 @@ def test_no_effective_change_keeps_matching_working_orders_untouched() -> None:
     assert transition.next_state == state
     assert transition.reconciliation.cancel == ()
     assert transition.reconciliation.submit == ()
+
+
+def test_replacement_open_order_budget_counts_old_strategy_orders_as_replaced() -> None:
+    state = DynamicCenterState(center=Decimal("100"), generation=0)
+    working = _working_generation(state)
+    limits = RiskLimits(
+        max_abs_position=Decimal("1"),
+        max_drawdown_fraction=Decimal("0.10"),
+        max_data_age_ms=1_000,
+        max_open_orders=4,
+    )
+
+    transition = transition_dynamic_center(
+        snapshot=_snapshot(),
+        state=state,
+        center_config=DynamicCenterConfig(Decimal("1"), Decimal("50")),
+        grid_config=_grid_config(),
+        risk_limits=limits,
+        risk_state=_risk_state(open_orders=len(working)),
+        working_orders=working,
+    )
+
+    assert transition.risk_decision.allow_new_risk is True
+    assert transition.reconciliation.cancel
