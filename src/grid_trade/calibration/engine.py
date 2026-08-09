@@ -63,7 +63,12 @@ class CalibrationEngineState:
         has_history = bool(self.prices or self.volatility_state.prices or self.funding_state.values)
 
         if self.generation == 0:
-            if identity_initialized or timestamp_initialized or has_history or self.config is not None:
+            if (
+                identity_initialized
+                or timestamp_initialized
+                or has_history
+                or self.config is not None
+            ):
                 raise ValueError("generation zero requires pristine calibration state")
             return
 
