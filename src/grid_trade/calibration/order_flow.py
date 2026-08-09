@@ -189,11 +189,7 @@ def estimate_ofi_impact(
         beta = min(config.max_abs_beta, max(-config.max_abs_beta, raw_beta))
         squared_error = sum(
             (
-                (
-                    sample.relative_price_change
-                    - beta * sample.normalized_ofi
-                )
-                ** 2
+                (sample.relative_price_change - beta * sample.normalized_ofi) ** 2
                 for sample in samples
             ),
             start=_ZERO,
@@ -238,10 +234,7 @@ def predict_ofi_displacement(
     normalized_ofi_value: Decimal,
     estimate: OfiImpactEstimate,
 ) -> Decimal | None:
-    if (
-        not isinstance(normalized_ofi_value, Decimal)
-        or not normalized_ofi_value.is_finite()
-    ):
+    if not isinstance(normalized_ofi_value, Decimal) or not normalized_ofi_value.is_finite():
         raise ValueError("normalized_ofi_value must be a finite Decimal")
     if not estimate.ready or estimate.beta is None:
         return None
