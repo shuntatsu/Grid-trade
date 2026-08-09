@@ -63,9 +63,9 @@ def test_fixture_load_is_deterministic_and_separates_snapshot_from_feed() -> Non
 
     assert left == right
     assert len(left.snapshot) == 2
-    assert len(left.feed) == 4
+    assert len(left.feed) == 5
     assert left.snapshot[0].kind == "snapshot_bid"
-    assert left.feed[0].kind == "trade_sell"
+    assert left.feed[0].kind == "depth_ask"
 
 
 @pytest.mark.parametrize(
