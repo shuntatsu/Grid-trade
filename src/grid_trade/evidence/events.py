@@ -44,6 +44,7 @@ class EvidenceKind(StrEnum):
     RECONCILIATION_PLAN = "reconciliation_plan"
     FILL = "fill"
     RISK_DECISION = "risk_decision"
+    CENTER_DECISION = "center_decision"
     RUN_SUMMARY = "run_summary"
 
 
