@@ -7,7 +7,11 @@ from hashlib import sha256
 from typing import Any
 
 from grid_trade.application.passive_policy import transition_passive_policy
-from grid_trade.datasets.audit import require_promoting_dataset
+from grid_trade.datasets.audit import (
+    audit_canonical_dataset,
+    audit_report_digest,
+    require_promoting_dataset,
+)
 from grid_trade.datasets.canonical import (
     CanonicalBookSnapshot,
     CanonicalEventEnvelope,
@@ -160,6 +164,23 @@ def _validate_events(
             raise ValueError("Tier-2 replay requires two-sided initial visible depth")
         return event
     raise ValueError("Tier-2 replay requires an initial book snapshot")
+
+
+def _validated_audit_events(
+    manifest: Tier2ReplayManifest,
+    events: tuple[CanonicalEventEnvelope, ...],
+) -> tuple[CanonicalEventEnvelope, ...]:
+    report = audit_canonical_dataset(
+        events,
+        raw_objects=manifest.dataset.raw_objects,
+        expected_normalization_schema_version=manifest.dataset.normalization_schema_version,
+    )
+    actual_digest = audit_report_digest(report)
+    if actual_digest != manifest.dataset.audit_digest:
+        raise ValueError("canonical events do not match DatasetManifest audit_digest")
+    if report.acceptance is not manifest.dataset.acceptance:
+        raise ValueError("canonical event audit acceptance does not match DatasetManifest")
+    return report.accepted_events
 
 
 def _validate_exact_hour_funding(events: tuple[CanonicalEventEnvelope, ...]) -> None:
@@ -582,6 +603,8 @@ def run_tier2_replay(
     if risk_state.open_order_count != 0:
         raise ValueError("Tier-2 replay requires a clean initial working-order state")
 
+    _validate_events(manifest, events)
+    events = _validated_audit_events(manifest, events)
     initial_event = _validate_events(manifest, events)
     _validate_exact_hour_funding(events)
     market_snapshot = _market_snapshot(
