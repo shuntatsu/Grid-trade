@@ -40,12 +40,8 @@ def _book(
         raw_record_ordinal=ordinal,
         normalization_schema_version="canonical-v1",
         payload=CanonicalBookSnapshot(
-            bids=tuple(
-                CanonicalBookLevel(Decimal(price), Decimal("10"), 1) for price in bids
-            ),
-            asks=tuple(
-                CanonicalBookLevel(Decimal(price), Decimal("10"), 1) for price in asks
-            ),
+            bids=tuple(CanonicalBookLevel(Decimal(price), Decimal("10"), 1) for price in bids),
+            asks=tuple(CanonicalBookLevel(Decimal(price), Decimal("10"), 1) for price in asks),
         ),
     )
 
@@ -73,16 +69,22 @@ def test_first_visibility_loss_is_recorded_after_confirmed_zero_leaves_range() -
         _book(300, bids=("102", "101", "100"), asks=("103", "104", "105"), ordinal=2),
     )
 
-    assert first_order_visibility_loss_ns(
-        events,
-        side=OrderSide.BUY,
-        price=Decimal("99"),
-    ) == 300
-    assert first_order_visibility_loss_ns(
-        events,
-        side=OrderSide.BUY,
-        price=Decimal("98"),
-    ) == 300
+    assert (
+        first_order_visibility_loss_ns(
+            events,
+            side=OrderSide.BUY,
+            price=Decimal("99"),
+        )
+        == 300
+    )
+    assert (
+        first_order_visibility_loss_ns(
+            events,
+            side=OrderSide.BUY,
+            price=Decimal("98"),
+        )
+        == 300
+    )
 
 
 def test_visibility_loss_for_sell_uses_ask_side() -> None:
@@ -91,16 +93,22 @@ def test_visibility_loss_for_sell_uses_ask_side() -> None:
         _book(200, bids=("96", "95", "94"), asks=("99", "100", "101"), ordinal=1),
     )
 
-    assert first_order_visibility_loss_ns(
-        events,
-        side=OrderSide.SELL,
-        price=Decimal("103"),
-    ) == 200
-    assert first_order_visibility_loss_ns(
-        events,
-        side=OrderSide.SELL,
-        price=Decimal("101"),
-    ) is None
+    assert (
+        first_order_visibility_loss_ns(
+            events,
+            side=OrderSide.SELL,
+            price=Decimal("103"),
+        )
+        == 200
+    )
+    assert (
+        first_order_visibility_loss_ns(
+            events,
+            side=OrderSide.SELL,
+            price=Decimal("101"),
+        )
+        is None
+    )
 
 
 def test_liquidity_summary_records_max_q95_and_earliest_visibility_boundary() -> None:
