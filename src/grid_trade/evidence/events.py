@@ -4,10 +4,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import TypeAlias
 
-CanonicalScalar: TypeAlias = str | int | bool | None
-CanonicalValue: TypeAlias = CanonicalScalar | list["CanonicalValue"] | dict[str, "CanonicalValue"]
+type CanonicalScalar = str | int | bool | None
+type CanonicalValue = CanonicalScalar | list[CanonicalValue] | dict[str, CanonicalValue]
 
 
 def _utc_string(value: datetime) -> str:
