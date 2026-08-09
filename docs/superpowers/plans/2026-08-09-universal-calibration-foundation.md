@@ -132,7 +132,7 @@ def test_volatility_is_not_ready_before_min_samples() -> None:
     assert estimate.scale is None
 ```
 
-Also test deterministic window truncation, invalid config, duplicate flat prices yielding zero scale, and non-monotonic timestamps rejected by a caller-facing update sequence helper.
+Also test deterministic window truncation, invalid config, and duplicate flat prices yielding zero scale. Strict timestamp ordering is tested only at the Calibration Engine boundary in Task 6.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
