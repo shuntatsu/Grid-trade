@@ -553,10 +553,7 @@ def run_tier2_replay(
     )
     funding_pnl = sum((flow.cash_flow for flow in funding_flows), Decimal(0))
     maker_fee_cash_flow = -sum(
-        (
-            fill.price * fill.quantity * manifest.hft.maker_fee
-            for fill in replay_summary.fills
-        ),
+        (fill.price * fill.quantity * manifest.hft.maker_fee for fill in replay_summary.fills),
         Decimal(0),
     )
     ending_position = starting_position + replay_summary.ending_position
