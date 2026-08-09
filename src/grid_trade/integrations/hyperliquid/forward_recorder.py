@@ -1,3 +1,4 @@
+import json
 import os
 import struct
 from collections.abc import Callable
@@ -14,8 +15,19 @@ from grid_trade.datasets.contracts import (
     sha256_bytes,
 )
 
+FORWARD_SEGMENT_MANIFEST_SCHEMA_VERSION = "hyperliquid-forward-segment-manifest-v1"
 _FORWARD_SEGMENT_MAGIC = b"GT-HL-SEGMENT-V1\n"
 _FRAME_HEADER = struct.Struct(">QQ")
+
+
+def _default_directory_sync(path: Path) -> None:
+    if os.name == "nt":
+        return
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +43,43 @@ class ForwardSegment:
             raise ValueError("record_count must be non-negative")
 
 
+def _iso_utc(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def canonical_forward_segment_manifest_bytes(segment: ForwardSegment) -> bytes:
+    raw = segment.raw_object
+    payload = {
+        "continuity_epoch": segment.continuity_epoch,
+        "manifest_schema_version": FORWARD_SEGMENT_MANIFEST_SCHEMA_VERSION,
+        "raw_object": {
+            "acquired_at": _iso_utc(raw.acquired_at),
+            "byte_length": raw.byte_length,
+            "collector_schema_version": raw.collector_schema_version,
+            "complete": raw.complete,
+            "dataset_type": raw.identity.dataset_type.value,
+            "decoder_schema_version": raw.decoder_schema_version,
+            "instrument": raw.identity.instrument,
+            "receive_end_ns": raw.receive_end_ns,
+            "receive_start_ns": raw.receive_start_ns,
+            "sha256": raw.identity.sha256,
+            "source_end_ns": raw.source_end_ns,
+            "source_family": raw.identity.source_family.value,
+            "source_locator": raw.source_locator,
+            "source_start_ns": raw.source_start_ns,
+        },
+        "record_count": segment.record_count,
+    }
+    rendered = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return f"{rendered}\n".encode()
+
+
 class ForwardSegmentWriter:
     def __init__(
         self,
@@ -42,6 +91,7 @@ class ForwardSegmentWriter:
         decoder_schema_version: str,
         continuity_epoch: int,
         sync_fn: Callable[[int], None] | None = None,
+        directory_sync_fn: Callable[[Path], None] | None = None,
     ) -> None:
         if continuity_epoch < 0:
             raise ValueError("continuity_epoch must be non-negative")
@@ -54,20 +104,33 @@ class ForwardSegmentWriter:
 
         self._final_path = final_path
         self._partial_path = final_path.with_name(f"{final_path.name}.partial")
+        self._manifest_path = final_path.with_name(f"{final_path.name}.manifest.json")
+        self._manifest_partial_path = self._manifest_path.with_name(
+            f"{self._manifest_path.name}.partial"
+        )
         self._instrument = instrument
         self._dataset_type = dataset_type
         self._collector_schema_version = collector_schema_version
         self._decoder_schema_version = decoder_schema_version
         self._continuity_epoch = continuity_epoch
         self._sync_fn = os.fsync if sync_fn is None else sync_fn
+        self._directory_sync_fn = (
+            _default_directory_sync if directory_sync_fn is None else directory_sync_fn
+        )
         self._record_count = 0
         self._receive_start_ns: int | None = None
         self._receive_end_ns: int | None = None
         self._closed = False
 
         final_path.parent.mkdir(parents=True, exist_ok=True)
-        if final_path.exists():
-            raise FileExistsError(f"final segment already exists: {final_path}")
+        for path in (
+            self._final_path,
+            self._partial_path,
+            self._manifest_path,
+            self._manifest_partial_path,
+        ):
+            if path.exists():
+                raise FileExistsError(f"forward segment artifact already exists: {path}")
         self._file: BinaryIO = self._partial_path.open("xb")
         self._file.write(_FORWARD_SEGMENT_MAGIC)
 
@@ -78,6 +141,14 @@ class ForwardSegmentWriter:
     @property
     def final_path(self) -> Path:
         return self._final_path
+
+    @property
+    def manifest_path(self) -> Path:
+        return self._manifest_path
+
+    @property
+    def manifest_partial_path(self) -> Path:
+        return self._manifest_partial_path
 
     @property
     def continuity_epoch(self) -> int:
@@ -124,7 +195,7 @@ class ForwardSegmentWriter:
             ),
             byte_length=len(payload),
             acquired_at=acquired_at,
-            source_locator=str(path),
+            source_locator=str(self._final_path if complete else path),
             collector_schema_version=self._collector_schema_version,
             decoder_schema_version=self._decoder_schema_version,
             receive_start_ns=self._receive_start_ns,
@@ -137,6 +208,15 @@ class ForwardSegmentWriter:
             record_count=self._record_count,
         )
 
+    def _publish_manifest(self, segment: ForwardSegment) -> None:
+        payload = canonical_forward_segment_manifest_bytes(segment)
+        with self._manifest_partial_path.open("xb") as manifest_file:
+            manifest_file.write(payload)
+            manifest_file.flush()
+            self._sync_fn(manifest_file.fileno())
+        os.replace(self._manifest_partial_path, self._manifest_path)
+        self._directory_sync_fn(self._manifest_path.parent)
+
     def finalize(self, *, acquired_at: datetime) -> ForwardSegment:
         self._require_open()
         if self._record_count == 0:
@@ -145,7 +225,14 @@ class ForwardSegmentWriter:
         self._file.close()
         self._closed = True
         os.replace(self._partial_path, self._final_path)
-        return self._build_segment(path=self._final_path, acquired_at=acquired_at, complete=True)
+        self._directory_sync_fn(self._final_path.parent)
+        segment = self._build_segment(
+            path=self._final_path,
+            acquired_at=acquired_at,
+            complete=True,
+        )
+        self._publish_manifest(segment)
+        return segment
 
     def abort(self, *, acquired_at: datetime) -> ForwardSegment:
         self._require_open()
@@ -179,4 +266,10 @@ def read_segment_records(path: Path) -> tuple[tuple[int, bytes], ...]:
     return tuple(records)
 
 
-__all__ = ["ForwardSegment", "ForwardSegmentWriter", "read_segment_records"]
+__all__ = [
+    "FORWARD_SEGMENT_MANIFEST_SCHEMA_VERSION",
+    "ForwardSegment",
+    "ForwardSegmentWriter",
+    "canonical_forward_segment_manifest_bytes",
+    "read_segment_records",
+]
