@@ -38,10 +38,17 @@ from grid_trade.datasets.contracts import (
     SourceFamily,
 )
 from grid_trade.datasets.manifest import DatasetManifest
+from grid_trade.domain.risk import RiskLimits, RiskState
+from grid_trade.research.hftbacktest_adapter import HftReplayConfig
+from grid_trade.research.replay_attribution import MarketImpactEligibilityConfig
 from grid_trade.research.tier2_calibrated_candidate import (
     Tier2CalibratedCandidateConfig,
     Tier2CalibrationEvidenceFrame,
     derive_tier2_calibrated_candidate,
+)
+from grid_trade.research.tier2_calibrated_replay import (
+    CalibratedTier2ReplayConfig,
+    run_calibrated_tier2_replay,
 )
 from grid_trade.risk.sizing import RiskSizingConfig
 from grid_trade.strategy.adaptive_grid import AdaptiveStage
@@ -229,6 +236,25 @@ def _config() -> Tier2CalibratedCandidateConfig:
     )
 
 
+def _replay_config() -> CalibratedTier2ReplayConfig:
+    return CalibratedTier2ReplayConfig(
+        candidate=_config(),
+        hft=HftReplayConfig(
+            tick_size=Decimal("0.01"),
+            lot_size=Decimal("0.001"),
+            maker_fee=Decimal("0.0001"),
+            taker_fee=Decimal("0.0005"),
+        ),
+        market_impact=MarketImpactEligibilityConfig(
+            max_same_level_participation=Decimal("0.5"),
+            max_top_n_participation=Decimal("0.5"),
+        ),
+        strategy_identity="universal-calibrated-adaptive:S7:v1",
+        calibration_identity_prefix="universal-calibration:v1",
+        synthetic_receive_latency_ns=0,
+    )
+
+
 def _intensity() -> tuple[IntensityBucket, ...]:
     return tuple(
         IntensityBucket(Decimal(distance), Decimal("100"), arrivals)
@@ -367,3 +393,40 @@ def test_candidate_derivation_fails_closed_when_calibration_is_not_ready() -> No
             equity=Decimal("100"),
             starting_position=Decimal(0),
         )
+
+
+def test_calibrated_candidate_flows_into_existing_hard_risk_replay() -> None:
+    events = _events()
+    decision_timestamp_ns = _ns(_time(13))
+    dataset = _manifest(events)
+
+    result = run_calibrated_tier2_replay(
+        dataset=dataset,
+        events=events,
+        evidence_frames=_frames(),
+        decision_exchange_ts_ns=decision_timestamp_ns,
+        config=_replay_config(),
+        risk_limits=RiskLimits(
+            max_abs_position=Decimal("0.001"),
+            max_drawdown_fraction=Decimal("0.20"),
+            max_data_age_ms=1_000,
+            max_open_orders=10,
+        ),
+        risk_state=RiskState(
+            equity=Decimal("100"),
+            peak_equity=Decimal("100"),
+            open_order_count=0,
+            now=_time(13),
+        ),
+        starting_position=Decimal(0),
+    )
+
+    assert result.candidate.candidate_orders
+    assert result.replay.candidate_order_count == len(result.candidate.candidate_orders)
+    assert result.replay.risk_accepted_order_count == 0
+    assert result.replay.risk_decision.allow_new_risk is False
+    assert result.candidate.provenance_digest in result.replay_manifest.calibration_identity
+    assert result.replay_manifest.dataset.audit_digest != dataset.audit_digest
+    assert result.replay.production_authorized is False
+    assert result.replay.alpha_validated is False
+    assert result.replay.economics_validated is False
