@@ -75,6 +75,7 @@ def _fill_payload(fill: ReplayFill) -> dict[str, object]:
         "timestamp_ns": fill.timestamp_ns,
         "price": fill.price,
         "quantity": fill.quantity,
+        "remaining_quantity": fill.remaining_quantity,
     }
 
 
