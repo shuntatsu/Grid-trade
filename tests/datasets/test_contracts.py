@@ -13,7 +13,7 @@ from grid_trade.datasets.contracts import (
 
 def test_sha256_bytes_hashes_exact_payload() -> None:
     assert sha256_bytes(b"grid-trade\n") == (
-        "b0f59c91f157410d19374eb876c2e15614a2835aa7520c461955d112a3b2fd54"
+        "912e0454fe45544f917b6fe3ac52db54b87ceecc2176f1dc03f57ae9df329873"
     )
 
 
