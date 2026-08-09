@@ -1,5 +1,5 @@
 import datetime as dt
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -47,6 +47,17 @@ def test_volatility_is_scale_invariant_to_price_level() -> None:
 
     assert a.ready is True
     assert a.scale == b.scale
+
+
+def test_volatility_is_independent_of_ambient_decimal_precision() -> None:
+    with localcontext() as context:
+        context.prec = 10
+        _, low_precision = _run(["100", "101.37", "99.81", "102.44", "101.03"])
+    with localcontext() as context:
+        context.prec = 50
+        _, high_precision = _run(["100", "101.37", "99.81", "102.44", "101.03"])
+
+    assert low_precision == high_precision
 
 
 def test_volatility_is_not_ready_before_min_samples() -> None:
