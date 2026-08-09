@@ -18,7 +18,11 @@ from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 from grid_trade.domain.risk import RiskLimits, RiskState
 from grid_trade.research.hftbacktest_adapter import HftReplayConfig
 from grid_trade.research.replay_attribution import MarketImpactEligibilityConfig
-from grid_trade.research.tier2_replay import Tier2ReplayManifest, Tier2ReplayResult, run_tier2_replay
+from grid_trade.research.tier2_replay import (
+    Tier2ReplayManifest,
+    Tier2ReplayResult,
+    run_tier2_replay,
+)
 
 _BOOK_HASH = "a" * 64
 _TRADE_HASH = "b" * 64
