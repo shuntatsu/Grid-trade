@@ -43,6 +43,7 @@ def _python_files(layer: str) -> tuple[Path, ...]:
             (
                 "grid_trade.application",
                 "grid_trade.calibration",
+                "grid_trade.evidence",
                 "grid_trade.execution",
                 "grid_trade.integrations",
                 "grid_trade.research",
