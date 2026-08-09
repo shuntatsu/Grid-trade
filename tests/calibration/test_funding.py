@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -45,6 +45,24 @@ def test_funding_score_is_location_and_scale_normalized() -> None:
     assert b.ready is True
     assert a.z_score == b.z_score
     assert a.score == b.score
+
+
+def test_funding_is_independent_of_ambient_decimal_precision() -> None:
+    values = ["0.00011", "0.00027", "0.00019", "0.00043", "0.00031"]
+    config = FundingCalibrationConfig(
+        window=5,
+        min_samples=5,
+        mad_scale=Decimal("1.4826"),
+        clip_z=Decimal("4"),
+    )
+    with localcontext() as context:
+        context.prec = 10
+        low_precision = _run(values, config=config)
+    with localcontext() as context:
+        context.prec = 50
+        high_precision = _run(values, config=config)
+
+    assert low_precision == high_precision
 
 
 def test_score_is_clipped_and_bounded() -> None:
