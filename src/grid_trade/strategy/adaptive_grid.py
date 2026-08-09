@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from enum import IntEnum
 
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
@@ -52,6 +53,14 @@ def _require_finite(value: Decimal, *, field: str) -> None:
         raise ValueError(f"{field} must be a finite Decimal")
 
 
+class AdaptiveStage(IntEnum):
+    S3_INVENTORY = 3
+    S4_DERISK = 4
+    S5_SHORT = 5
+    S6_FUNDING = 6
+    S7_ORDER_BOOK = 7
+
+
 @dataclass(frozen=True, slots=True)
 class AdaptiveGridPolicyConfig:
     center: DynamicCenterConfig
@@ -62,6 +71,7 @@ class AdaptiveGridPolicyConfig:
     short: ShortOverlayConfig
     funding: FundingBiasConfig
     order_book: OrderBookReferenceConfig
+    stage: AdaptiveStage = AdaptiveStage.S7_ORDER_BOOK
 
     def __post_init__(self) -> None:
         if self.inventory.max_abs_target != self.ladder.max_abs_inventory:
@@ -100,6 +110,7 @@ class AdaptiveGridState:
 
 @dataclass(frozen=True, slots=True)
 class AdaptiveGridDecision:
+    stage: AdaptiveStage
     center: CenterProposal
     spacing: SpacingDecision
     de_risk: DeRiskDecision
@@ -114,6 +125,10 @@ class AdaptiveGridDecision:
     previous_generation: int
     effective_generation: int
     economic_ladder_changed: bool
+    de_risk_applied: bool
+    short_applied: bool
+    funding_applied: bool
+    order_book_applied: bool
 
     def __post_init__(self) -> None:
         _require_finite_positive(self.inventory_reference, field="inventory_reference")
@@ -125,6 +140,14 @@ class AdaptiveGridDecision:
         expected = self.previous_generation + (1 if self.economic_ladder_changed else 0)
         if self.effective_generation != expected:
             raise ValueError("effective_generation must track one economic ladder change")
+        if self.de_risk_applied != (self.stage >= AdaptiveStage.S4_DERISK):
+            raise ValueError("de_risk_applied must match stage")
+        if self.short_applied != (self.stage >= AdaptiveStage.S5_SHORT):
+            raise ValueError("short_applied must match stage")
+        if self.funding_applied != (self.stage >= AdaptiveStage.S6_FUNDING):
+            raise ValueError("funding_applied must match stage")
+        if self.order_book_applied != (self.stage >= AdaptiveStage.S7_ORDER_BOOK):
+            raise ValueError("order_book_applied must match stage")
 
 
 def _ladder_config_with_spacing(
@@ -144,21 +167,39 @@ def _target_pipeline(
         signals.trend_score,
         config.de_risk,
     )
+    target_after_derisk = (
+        de_risk.effective_target
+        if config.stage >= AdaptiveStage.S4_DERISK
+        else config.inventory.base_long_target
+    )
+
     short = apply_conditional_short(
-        long_target=de_risk.effective_target,
+        long_target=target_after_derisk,
         position=snapshot.position_quantity,
         trend_score=signals.trend_score,
         config=config.short,
     )
+    target_after_short = (
+        short.effective_target
+        if config.stage >= AdaptiveStage.S5_SHORT
+        else target_after_derisk
+    )
+
     funding = apply_funding_bias(
-        target=short.effective_target,
+        target=target_after_short,
         position=snapshot.position_quantity,
         funding_rate=signals.funding_rate,
         config=config.funding,
     )
+    target_after_funding = (
+        funding.effective_target
+        if config.stage >= AdaptiveStage.S6_FUNDING
+        else target_after_short
+    )
+
     inventory = decide_inventory_target(
         position=snapshot.position_quantity,
-        target=funding.effective_target,
+        target=target_after_funding,
         config=config.inventory,
     )
     return de_risk, short, funding, inventory
@@ -171,7 +212,7 @@ def _reference_pipeline(
     signals: AdaptiveSignals,
     inventory: InventoryTargetDecision,
     config: AdaptiveGridPolicyConfig,
-) -> tuple[Decimal, OrderBookReferenceDecision]:
+) -> tuple[Decimal, OrderBookReferenceDecision, Decimal]:
     inventory_reference = center * (Decimal(1) + inventory.reservation_shift_bps / _BASIS_POINTS)
     _require_finite_positive(inventory_reference, field="inventory_reference")
     order_book = decide_order_book_reference(
@@ -180,7 +221,12 @@ def _reference_pipeline(
         signals=signals,
         config=config.order_book,
     )
-    return inventory_reference, order_book
+    effective_reference = (
+        order_book.effective_reference
+        if config.stage >= AdaptiveStage.S7_ORDER_BOOK
+        else inventory_reference
+    )
+    return inventory_reference, order_book, effective_reference
 
 
 def _build_state_ladder(
@@ -204,15 +250,14 @@ def initialize_adaptive_grid(
     signals: AdaptiveSignals,
     config: AdaptiveGridPolicyConfig,
 ) -> tuple[AdaptiveGridState, tuple[PassiveOrderIntent, ...]]:
-    de_risk, short, funding, inventory = _target_pipeline(snapshot, signals, config)
-    del de_risk, short, funding
+    _, _, _, inventory = _target_pipeline(snapshot, signals, config)
     spacing = propose_volatility_spacing(
         snapshot,
         config.ladder.spacing_bps,
         config.spacing,
     )
     center = snapshot.mid
-    _, order_book = _reference_pipeline(
+    _, _, effective_reference = _reference_pipeline(
         center=center,
         snapshot=snapshot,
         signals=signals,
@@ -221,7 +266,7 @@ def initialize_adaptive_grid(
     )
     state = AdaptiveGridState(
         center=center,
-        reference=order_book.effective_reference,
+        reference=effective_reference,
         spacing_bps=spacing.effective_spacing_bps,
         target=inventory.target,
         bid_scale=inventory.bid_scale,
@@ -246,7 +291,7 @@ def decide_adaptive_grid(
     )
     spacing = propose_volatility_spacing(snapshot, state.spacing_bps, config.spacing)
     de_risk, short, funding, inventory = _target_pipeline(snapshot, signals, config)
-    inventory_reference, order_book = _reference_pipeline(
+    inventory_reference, order_book, effective_reference = _reference_pipeline(
         center=center.proposed_center,
         snapshot=snapshot,
         signals=signals,
@@ -257,7 +302,7 @@ def decide_adaptive_grid(
     candidate_generation = state.generation + 1
     candidate_state = AdaptiveGridState(
         center=center.proposed_center,
-        reference=order_book.effective_reference,
+        reference=effective_reference,
         spacing_bps=spacing.effective_spacing_bps,
         target=inventory.target,
         bid_scale=inventory.bid_scale,
@@ -278,6 +323,7 @@ def decide_adaptive_grid(
         effective_ladder = current_ladder
 
     decision = AdaptiveGridDecision(
+        stage=config.stage,
         center=center,
         spacing=spacing,
         de_risk=de_risk,
@@ -292,6 +338,10 @@ def decide_adaptive_grid(
         previous_generation=state.generation,
         effective_generation=effective_state.generation,
         economic_ladder_changed=changed,
+        de_risk_applied=config.stage >= AdaptiveStage.S4_DERISK,
+        short_applied=config.stage >= AdaptiveStage.S5_SHORT,
+        funding_applied=config.stage >= AdaptiveStage.S6_FUNDING,
+        order_book_applied=config.stage >= AdaptiveStage.S7_ORDER_BOOK,
     )
     return decision, effective_state, effective_ladder
 
@@ -300,6 +350,7 @@ __all__ = [
     "AdaptiveGridDecision",
     "AdaptiveGridPolicyConfig",
     "AdaptiveGridState",
+    "AdaptiveStage",
     "decide_adaptive_grid",
     "initialize_adaptive_grid",
 ]
