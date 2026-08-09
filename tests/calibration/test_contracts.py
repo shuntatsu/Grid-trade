@@ -4,10 +4,10 @@ from decimal import Decimal
 import pytest
 
 from grid_trade.calibration import (
+    CalibratedMarketState,
     CalibrationComponentStatus,
     CalibrationObservation,
     CalibrationReadiness,
-    CalibratedMarketState,
 )
 
 
