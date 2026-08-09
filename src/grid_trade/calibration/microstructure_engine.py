@@ -141,6 +141,20 @@ class MicrostructureCalibrationEstimate:
                 raise ValueError(f"{field_name} must be a finite Decimal when available")
         if self.order_book_score is not None and not -_ONE <= self.order_book_score <= _ONE:
             raise ValueError("order_book_score must be within [-1, 1]")
+        if self.readiness.ready:
+            required_ready = (
+                self.intensity.ready
+                and self.quote_distance_scale is not None
+                and self.execution.markout_ready
+                and self.current_normalized_ofi is not None
+                and self.ofi_impact.ready
+                and self.predicted_relative_displacement is not None
+                and self.order_book_score is not None
+                and self.readiness.quality is not None
+                and self.readiness.reason == "ready"
+            )
+            if not required_ready:
+                raise ValueError("ready microstructure estimate requires all calibrated components")
 
 
 @dataclass(frozen=True, slots=True)
