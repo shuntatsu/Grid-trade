@@ -1,4 +1,5 @@
 from decimal import Decimal
+from importlib import import_module
 from importlib.metadata import version as distribution_version
 from typing import Any
 
@@ -49,9 +50,12 @@ def build_nautilus_post_only_order(
     require_nautilus_runtime()
     _validate_alignment(instrument=instrument, intent=intent)
 
-    from nautilus_trader.model.enums import OrderSide as NautilusOrderSide
-    from nautilus_trader.model.enums import TimeInForce
-    from nautilus_trader.model.objects import Price, Quantity
+    enums = import_module("nautilus_trader.model.enums")
+    objects = import_module("nautilus_trader.model.objects")
+    NautilusOrderSide = enums.OrderSide
+    TimeInForce = enums.TimeInForce
+    Price = objects.Price
+    Quantity = objects.Quantity
 
     instrument_id = getattr(instrument, "id", None)
     if instrument_id is None:
