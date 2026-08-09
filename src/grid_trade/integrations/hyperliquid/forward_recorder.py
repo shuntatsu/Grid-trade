@@ -111,7 +111,9 @@ class ForwardSegmentWriter:
         self._record_count += 1
         return ordinal
 
-    def _build_segment(self, *, path: Path, acquired_at: datetime, complete: bool) -> ForwardSegment:
+    def _build_segment(
+        self, *, path: Path, acquired_at: datetime, complete: bool
+    ) -> ForwardSegment:
         payload = path.read_bytes()
         raw_object = RawObjectRef(
             identity=RawObjectIdentity(
