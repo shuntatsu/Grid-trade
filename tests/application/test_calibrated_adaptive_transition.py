@@ -37,18 +37,14 @@ def _snapshot(*, second: int = 0, position: str = "0") -> MarketSnapshot:
 def _config(*, order_quantity: str = "0.02") -> AdaptiveGridPolicyConfig:
     return AdaptiveGridPolicyConfig(
         center=DynamicCenterConfig(Decimal("20"), Decimal("50")),
-        spacing=VolatilitySpacingConfig(
-            Decimal("40"), Decimal("200"), Decimal("1"), Decimal("30")
-        ),
+        spacing=VolatilitySpacingConfig(Decimal("40"), Decimal("200"), Decimal("1"), Decimal("30")),
         ladder=AdaptiveLadderConfig(
             3, 50, Decimal(order_quantity), Decimal("0.01"), Decimal("0.10")
         ),
         inventory=InventoryTargetConfig(
             Decimal("0.05"), Decimal("0.10"), Decimal("20"), Decimal("1")
         ),
-        de_risk=DeRiskConfig(
-            Decimal("-0.25"), Decimal("-0.60"), Decimal("0.50"), Decimal("0")
-        ),
+        de_risk=DeRiskConfig(Decimal("-0.25"), Decimal("-0.60"), Decimal("0.50"), Decimal("0")),
         short=ShortOverlayConfig(Decimal("-0.60"), Decimal("0.08")),
         funding=FundingBiasConfig(Decimal("1"), Decimal("0.10"), Decimal("0.50")),
         order_book=OrderBookReferenceConfig(Decimal("0.50"), Decimal("10")),
