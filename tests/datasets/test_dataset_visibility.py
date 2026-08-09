@@ -6,6 +6,7 @@ from grid_trade.datasets.canonical import (
     CanonicalBookLevel,
     CanonicalBookSnapshot,
     VisibilityChange,
+    VisibleDepthUpdate,
 )
 
 
@@ -20,13 +21,14 @@ def _snapshot(*, bids: tuple[str, ...], asks: tuple[str, ...]) -> CanonicalBookS
     )
 
 
-def _find(updates: tuple[object, ...], *, side: BookSide, price: str) -> object:
+def _find(
+    updates: tuple[VisibleDepthUpdate, ...],
+    *,
+    side: BookSide,
+    price: str,
+) -> VisibleDepthUpdate:
     target = Decimal(price)
-    return next(
-        update
-        for update in updates
-        if getattr(update, "side") is side and getattr(update, "price") == target
-    )
+    return next(update for update in updates if update.side is side and update.price == target)
 
 
 def test_missing_level_inside_new_top_n_boundary_is_confirmed_zero() -> None:
@@ -46,9 +48,9 @@ def test_missing_level_inside_new_top_n_boundary_is_confirmed_zero() -> None:
     )
 
     removed = _find(updates, side=BookSide.BID, price="99")
-    assert getattr(removed, "change") is VisibilityChange.CONFIRMED_ZERO
-    assert getattr(removed, "quantity") == Decimal(0)
-    assert getattr(removed, "epoch_id") == 0
+    assert removed.change is VisibilityChange.CONFIRMED_ZERO
+    assert removed.quantity == Decimal(0)
+    assert removed.epoch_id == 0
 
 
 def test_level_beyond_new_deep_boundary_becomes_visibility_lost_not_cancelled() -> None:
@@ -68,11 +70,11 @@ def test_level_beyond_new_deep_boundary_becomes_visibility_lost_not_cancelled() 
     )
 
     lost_bid = _find(updates, side=BookSide.BID, price="98")
-    assert getattr(lost_bid, "change") is VisibilityChange.VISIBILITY_LOST
-    assert getattr(lost_bid, "epoch_id") == 0
+    assert lost_bid.change is VisibilityChange.VISIBILITY_LOST
+    assert lost_bid.epoch_id == 0
 
     lost_ask = _find(updates, side=BookSide.ASK, price="103")
-    assert getattr(lost_ask, "change") is VisibilityChange.CONFIRMED_ZERO
+    assert lost_ask.change is VisibilityChange.CONFIRMED_ZERO
 
 
 def test_reentry_after_visibility_loss_starts_new_epoch() -> None:
@@ -98,8 +100,8 @@ def test_reentry_after_visibility_loss_starts_new_epoch() -> None:
     )
 
     reentered = _find(updates, side=BookSide.BID, price="98")
-    assert getattr(reentered, "change") is VisibilityChange.REESTABLISHED
-    assert getattr(reentered, "epoch_id") == 1
+    assert reentered.change is VisibilityChange.REESTABLISHED
+    assert reentered.epoch_id == 1
 
 
 def test_replaying_same_snapshot_sequence_is_deterministic() -> None:
