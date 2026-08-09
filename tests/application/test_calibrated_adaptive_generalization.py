@@ -16,8 +16,9 @@ from grid_trade.calibration.contracts import (
     CalibrationReadiness,
 )
 from grid_trade.calibration.execution_cost import ExecutionCostConfig
-from grid_trade.calibration.intensity import IntensityBucket, IntensityCalibrationConfig
+from grid_trade.calibration.intensity import IntensityCalibrationConfig
 from grid_trade.calibration.microstructure_contracts import (
+    IntensityBucket,
     MarkoutSide,
     MaturedMarkout,
     OfiImpactSample,
