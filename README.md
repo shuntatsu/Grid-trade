@@ -155,19 +155,39 @@ The controlled runner deliberately does **not** infer fills from its exogenous p
 
 The absolute values used by the checked-in S0–S7 controlled runners are deterministic **mechanics fixtures**, not universal market parameters. Strategy research must not infer that a fixed `40 bps` floor, a fixed coin quantity, a fixed funding divisor, or a symbol-specific threshold is appropriate for a live or historical instrument.
 
-The new `grid_trade.calibration` boundary provides an instrument-agnostic causal foundation:
+The `grid_trade.calibration` boundary provides an instrument-agnostic causal foundation:
 
 - robust rolling log-return volatility in relative-price units;
 - dimensionless trend normalization using the instrument's own volatility scale;
 - rolling robust funding normalization with explicit unavailable/degenerate states instead of a fixed global funding scale;
 - strict timestamp and source/instrument continuity in the calibration engine;
+- frozen estimator meta-parameters after the first accepted observation;
 - explicit readiness for every calibration component;
+- deterministic evidence-sensitive Decimal arithmetic independent of the caller's Decimal context;
 - metamorphic tests proving that changing only the symbol identity cannot change numeric calibration output;
 - price-scale tests proving that multiplying all prices by a constant does not change normalized volatility/trend output.
 
 Account/risk capacity remains outside Calibration. `grid_trade.risk.sizing` derives `Q_max` from the most conservative of notional, margin, volatility-risk, and venue quantity caps. Calibration cannot increase Hard Risk limits, and Strategy may only consume a fraction of the capacity supplied to it.
 
-This foundation intentionally does **not** fabricate microstructure state. GLFT-style arrival intensity (`A`, `k`), execution/adverse-selection cost, OFI/depth impact, and microprice calibration still require causal Tier-2 trade/L2/fill data and are the next research phase. Until those components and calibrated S2–S7 integration pass realistic replay and sealed OOS gates, production remains NO-GO.
+## Universal causal microstructure calibration
+
+Phase B adds venue-neutral Tier-2 calibration without changing the existing S2–S7 strategy mechanics:
+
+- GLFT-style arrival-intensity calibration fits `λ(δ) = A exp(-kδ)` with exposure-aware Poisson likelihood; quote distance is expressed in volatility units rather than symbol-specific dollars or ticks, and zero-arrival buckets remain informative;
+- best-level OFI follows price/queue event changes and is normalized by observed top-of-book depth;
+- microprice and its displacement are represented in relative-price units;
+- OFI impact is fitted from matured short-horizon labels only; a future label may be retained as pending state but cannot enter the fit or evict the current causal window before `matured_at`;
+- adverse-selection cost uses matured BUY/SELL markouts and a deterministic upper quantile, with an explicit configured conservative fallback while markout evidence is insufficient;
+- execution-cost floor combines maker fee/rebate, adverse markout, uncertainty buffer, and tick/mid floor, and can never become negative;
+- the microstructure engine freezes config after its first observation, enforces timestamp and identity continuity, and reports explicit readiness/quality instead of fabricating unavailable L2 state;
+- order-book impact is normalized into volatility units before conversion to a bounded score;
+- public top-of-book and calibration calculations use the deterministic Decimal context.
+
+The Tier-2 inputs are L2/top-of-book observations, distance/exposure/arrival evidence, and matured OFI/markout labels. OHLC data is not used as a substitute for queue, depth, arrival, fill, or markout evidence.
+
+The checked-in microstructure calibration research runner is a **deterministic synthetic calibration/mechanics fixture**. It records frozen config, state generation, `A/k` and fit improvement, quote-distance scale, markout/fallback components, OFI beta/quality, predicted displacement, microprice displacement, and readiness in canonical Evidence. It also checks arbitrary-symbol rename and common price/size scale invariance. This runner does not establish historical performance, economic alpha, or production authorization.
+
+Phase B deliberately stops before strategy integration. S2–S7 still retain their controlled fixture inputs for regression. Phase C must compose the Foundation and Microstructure estimates into calibrated spacing, risk-derived quantity fractions, and adaptive signals, then prove the resulting strategy through realistic Tier-2 replay, symbol-disjoint walk-forward evaluation, sealed OOS tests, and stress gates.
 
 ## Execution and research architecture
 
