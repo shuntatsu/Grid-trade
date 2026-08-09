@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from grid_trade.calibration._robust import mad_decimal, median_decimal
+from grid_trade.domain.numeric import deterministic_decimal_context
 
 _ONE = Decimal(1)
 
@@ -95,7 +96,8 @@ def update_funding_calibration(
         return next_state, FundingEstimate.unavailable()
 
     center = median_decimal(values)
-    scale = config.mad_scale * mad_decimal(values, center=center)
+    with deterministic_decimal_context():
+        scale = config.mad_scale * mad_decimal(values, center=center)
     if scale == 0:
         return next_state, FundingEstimate(
             center=center,
@@ -106,9 +108,10 @@ def update_funding_calibration(
             degenerate=True,
         )
 
-    raw_z = (funding_rate - center) / scale
-    z_score = _clip(raw_z, -config.clip_z, config.clip_z)
-    score = z_score / config.clip_z
+    with deterministic_decimal_context():
+        raw_z = (funding_rate - center) / scale
+        z_score = _clip(raw_z, -config.clip_z, config.clip_z)
+        score = z_score / config.clip_z
     return next_state, FundingEstimate(
         center=center,
         scale=scale,
