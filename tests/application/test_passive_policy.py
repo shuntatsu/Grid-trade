@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from grid_trade.application.passive_policy import (
+    PassivePolicyTransition,
     continue_passive_policy_reconciliation,
     transition_passive_policy,
 )
@@ -70,7 +71,7 @@ def _replacement_intent() -> PassiveOrderIntent:
     )
 
 
-def _cancel_only_transition():
+def _cancel_only_transition() -> PassivePolicyTransition[_State, str]:
     return transition_passive_policy(
         decision="candidate",
         previous_state=_State(1),
