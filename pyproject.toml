@@ -21,6 +21,9 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers"
+markers = [
+  "research: requires pinned research runtime dependencies",
+]
 
 [tool.ruff]
 target-version = "py312"
