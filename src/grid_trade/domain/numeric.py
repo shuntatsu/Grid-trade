@@ -1,15 +1,15 @@
-from contextlib import AbstractContextManager
-from decimal import Context, localcontext, ROUND_HALF_EVEN
+import contextlib
+import decimal
 
-_DETERMINISTIC_DECIMAL_CONTEXT = Context(
+_DETERMINISTIC_DECIMAL_CONTEXT = decimal.Context(
     prec=50,
-    rounding=ROUND_HALF_EVEN,
+    rounding=decimal.ROUND_HALF_EVEN,
 )
 
 
-def deterministic_decimal_context() -> AbstractContextManager[Context]:
+def deterministic_decimal_context() -> contextlib.AbstractContextManager[decimal.Context]:
     """Return a fixed local Decimal context for evidence-sensitive arithmetic."""
-    return localcontext(_DETERMINISTIC_DECIMAL_CONTEXT)
+    return decimal.localcontext(_DETERMINISTIC_DECIMAL_CONTEXT)
 
 
 __all__ = ["deterministic_decimal_context"]
