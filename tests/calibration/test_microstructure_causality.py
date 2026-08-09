@@ -13,6 +13,7 @@ from grid_trade.calibration.microstructure_contracts import (
 from grid_trade.calibration.microstructure_engine import (
     MicrostructureCalibrationConfig,
     MicrostructureCalibrationState,
+    MicrostructureCalibrationUpdate,
     update_microstructure_engine,
 )
 from grid_trade.calibration.order_flow import OfiImpactConfig
@@ -102,7 +103,7 @@ def _first_update(
     buckets: tuple[IntensityBucket, ...] | None = None,
     labels: tuple[OfiImpactSample, ...] | None = None,
     markouts: tuple[MaturedMarkout, ...] | None = None,
-):
+) -> MicrostructureCalibrationUpdate:
     return update_microstructure_engine(
         MicrostructureCalibrationState(),
         _book(10),
