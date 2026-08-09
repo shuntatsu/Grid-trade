@@ -73,4 +73,24 @@ def build_long_grid_at_center(
     return tuple(orders)
 
 
-__all__ = ["FixedLongGridConfig", "build_long_grid_at_center"]
+def ladder_economic_signature(
+    ladder: tuple[PassiveOrderIntent, ...],
+) -> tuple[tuple[str, int, Decimal, Decimal, bool], ...]:
+    """Return venue-economic fields while intentionally excluding client/generation IDs."""
+    return tuple(
+        (
+            order.side.value,
+            order.level,
+            order.price,
+            order.quantity,
+            order.reduce_only,
+        )
+        for order in ladder
+    )
+
+
+__all__ = [
+    "FixedLongGridConfig",
+    "build_long_grid_at_center",
+    "ladder_economic_signature",
+]
