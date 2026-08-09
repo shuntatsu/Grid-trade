@@ -243,9 +243,9 @@ def replay_passive_orders(
 
     try:
         bootstrap_result = int(backtest.wait_next_feed(False, until_end_of_data))
-        if bootstrap_result != 2:
+        if bootstrap_result not in {0, 2}:
             raise RuntimeError(
-                f"expected one market-feed bootstrap event, got {bootstrap_result}",
+                f"expected successful market-feed bootstrap, got {bootstrap_result}",
             )
 
         for numeric_order_id, intent in enumerate(intents, start=1):
