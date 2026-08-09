@@ -1,0 +1,299 @@
+import csv
+from dataclasses import dataclass
+from decimal import Decimal
+from importlib import import_module
+from importlib.metadata import version as distribution_version
+from pathlib import Path
+from types import ModuleType
+from typing import Any
+
+from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
+
+_HFTBACKTEST_VERSION = "2.4.4"
+
+
+def _require_finite_positive(value: Decimal, *, field: str) -> None:
+    if not value.is_finite() or value <= 0:
+        raise ValueError(f"{field} must be finite and positive")
+
+
+def _require_finite(value: Decimal, *, field: str) -> None:
+    if not value.is_finite():
+        raise ValueError(f"{field} must be finite")
+
+
+def require_hftbacktest_runtime() -> None:
+    installed = distribution_version("hftbacktest")
+    if installed != _HFTBACKTEST_VERSION:
+        raise RuntimeError(
+            f"hftbacktest runtime mismatch: expected {_HFTBACKTEST_VERSION}, got {installed}",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class HftReplayConfig:
+    tick_size: Decimal
+    lot_size: Decimal
+    entry_latency_ns: int = 0
+    response_latency_ns: int = 0
+    maker_fee: Decimal = Decimal(0)
+    taker_fee: Decimal = Decimal(0)
+
+    def __post_init__(self) -> None:
+        _require_finite_positive(self.tick_size, field="tick_size")
+        _require_finite_positive(self.lot_size, field="lot_size")
+        if self.entry_latency_ns < 0:
+            raise ValueError("entry_latency_ns must be non-negative")
+        if self.response_latency_ns < 0:
+            raise ValueError("response_latency_ns must be non-negative")
+        _require_finite(self.maker_fee, field="maker_fee")
+        _require_finite(self.taker_fee, field="taker_fee")
+
+
+@dataclass(frozen=True, slots=True)
+class MicrostructureRow:
+    kind: str
+    exch_ts: int
+    local_ts: int
+    price: Decimal
+    quantity: Decimal
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"snapshot_bid", "snapshot_ask", "trade_buy", "trade_sell"}:
+            raise ValueError(f"unsupported microstructure kind: {self.kind}")
+        if self.exch_ts < 0 or self.local_ts < 0:
+            raise ValueError("timestamps must be non-negative")
+        _require_finite_positive(self.price, field="price")
+        _require_finite_positive(self.quantity, field="quantity")
+
+
+@dataclass(frozen=True, slots=True)
+class MicrostructureFixture:
+    snapshot: tuple[MicrostructureRow, ...]
+    feed: tuple[MicrostructureRow, ...]
+
+    def __post_init__(self) -> None:
+        if not self.snapshot:
+            raise ValueError("fixture must contain an initial snapshot")
+        if not self.feed:
+            raise ValueError("fixture must contain feed events")
+        if any(not row.kind.startswith("snapshot_") for row in self.snapshot):
+            raise ValueError("snapshot section contains a non-snapshot row")
+        if any(row.kind.startswith("snapshot_") for row in self.feed):
+            raise ValueError("feed section contains a snapshot row")
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayFill:
+    client_order_id: str
+    timestamp_ns: int
+    price: Decimal
+    quantity: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaySummary:
+    fills: tuple[ReplayFill, ...]
+    ending_position: Decimal
+    open_order_count: int
+
+
+def load_microstructure_fixture(path: Path) -> MicrostructureFixture:
+    snapshot: list[MicrostructureRow] = []
+    feed: list[MicrostructureRow] = []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        expected = ["kind", "exch_ts", "local_ts", "price", "quantity"]
+        if reader.fieldnames != expected:
+            raise ValueError(f"unexpected fixture columns: {reader.fieldnames}")
+        for raw in reader:
+            row = MicrostructureRow(
+                kind=raw["kind"],
+                exch_ts=int(raw["exch_ts"]),
+                local_ts=int(raw["local_ts"]),
+                price=Decimal(raw["price"]),
+                quantity=Decimal(raw["quantity"]),
+            )
+            if row.kind.startswith("snapshot_"):
+                snapshot.append(row)
+            else:
+                feed.append(row)
+    return MicrostructureFixture(snapshot=tuple(snapshot), feed=tuple(feed))
+
+
+def _runtime_modules() -> tuple[ModuleType, ModuleType]:
+    require_hftbacktest_runtime()
+    return import_module("hftbacktest"), import_module("numpy")
+
+
+def _event_flags(hft: ModuleType, row: MicrostructureRow) -> int:
+    if row.kind == "snapshot_bid":
+        return int(hft.DEPTH_SNAPSHOT_EVENT | hft.BUY_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
+    if row.kind == "snapshot_ask":
+        return int(hft.DEPTH_SNAPSHOT_EVENT | hft.SELL_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
+    if row.kind == "trade_buy":
+        return int(hft.TRADE_EVENT | hft.BUY_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
+    if row.kind == "trade_sell":
+        return int(hft.TRADE_EVENT | hft.SELL_EVENT | hft.EXCH_EVENT | hft.LOCAL_EVENT)
+    raise ValueError(f"unsupported microstructure kind: {row.kind}")
+
+
+def _to_event_array(hft: ModuleType, np: ModuleType, rows: tuple[MicrostructureRow, ...]) -> Any:
+    array = np.zeros(len(rows), dtype=hft.event_dtype)
+    for index, row in enumerate(rows):
+        array[index]["ev"] = _event_flags(hft, row)
+        array[index]["exch_ts"] = row.exch_ts
+        array[index]["local_ts"] = row.local_ts
+        array[index]["px"] = float(row.price)
+        array[index]["qty"] = float(row.quantity)
+        array[index]["order_id"] = 0
+        array[index]["ival"] = 0
+        array[index]["fval"] = 0.0
+    return array
+
+
+def _validate_order_alignment(
+    intent: PassiveOrderIntent,
+    config: HftReplayConfig,
+) -> None:
+    if intent.price % config.tick_size != 0:
+        raise ValueError(f"order {intent.client_order_id} price is not tick aligned")
+    if intent.quantity % config.lot_size != 0:
+        raise ValueError(f"order {intent.client_order_id} quantity is not lot aligned")
+
+
+def _submit_order(
+    hft: ModuleType,
+    backtest: Any,
+    *,
+    asset_no: int,
+    numeric_order_id: int,
+    intent: PassiveOrderIntent,
+) -> None:
+    if intent.side is OrderSide.BUY:
+        result = backtest.submit_buy_order(
+            asset_no,
+            numeric_order_id,
+            float(intent.price),
+            float(intent.quantity),
+            hft.GTX,
+            hft.LIMIT,
+            True,
+        )
+    else:
+        result = backtest.submit_sell_order(
+            asset_no,
+            numeric_order_id,
+            float(intent.price),
+            float(intent.quantity),
+            hft.GTX,
+            hft.LIMIT,
+            True,
+        )
+    if result != 0:
+        raise RuntimeError(f"hftbacktest failed to submit order {intent.client_order_id}: {result}")
+
+
+def replay_passive_orders(
+    fixture: MicrostructureFixture,
+    intents: tuple[PassiveOrderIntent, ...],
+    config: HftReplayConfig,
+) -> ReplaySummary:
+    hft, np = _runtime_modules()
+    if len({intent.client_order_id for intent in intents}) != len(intents):
+        raise ValueError("passive replay requires unique client_order_id values")
+    for intent in intents:
+        _validate_order_alignment(intent, config)
+
+    snapshot = _to_event_array(hft, np, fixture.snapshot)
+    feed = _to_event_array(hft, np, fixture.feed)
+    asset = (
+        hft.BacktestAsset()
+        .data(feed)
+        .initial_snapshot(snapshot)
+        .linear_asset(1.0)
+        .constant_order_latency(config.entry_latency_ns, config.response_latency_ns)
+        .risk_adverse_queue_model()
+        .partial_fill_exchange()
+        .trading_value_fee_model(float(config.maker_fee), float(config.taker_fee))
+        .tick_size(float(config.tick_size))
+        .lot_size(float(config.lot_size))
+    )
+    backtest = hft.HashMapMarketDepthBacktest([asset])
+    numeric_to_client: dict[int, str] = {}
+    seen_execution: dict[int, tuple[int, Decimal, Decimal]] = {}
+    fills: list[ReplayFill] = []
+
+    try:
+        for numeric_order_id, intent in enumerate(intents, start=1):
+            numeric_to_client[numeric_order_id] = intent.client_order_id
+            _submit_order(
+                hft,
+                backtest,
+                asset_no=0,
+                numeric_order_id=numeric_order_id,
+                intent=intent,
+            )
+
+        while True:
+            result = int(backtest.wait_next_feed(True, int(hft.UNTIL_END_OF_DATA)))
+            if result == 1:
+                break
+            if result not in {0, 2, 3}:
+                raise RuntimeError(f"unexpected hftbacktest feed result: {result}")
+            if result != 3:
+                continue
+
+            orders = backtest.orders(0)
+            for numeric_order_id, client_order_id in numeric_to_client.items():
+                order = orders.get(numeric_order_id)
+                if order is None or order.status not in {hft.PARTIALLY_FILLED, hft.FILLED}:
+                    continue
+                quantity = Decimal(str(order.exec_qty))
+                if quantity <= 0:
+                    continue
+                signature = (
+                    int(order.exch_timestamp),
+                    Decimal(str(order.exec_price)),
+                    quantity,
+                )
+                if seen_execution.get(numeric_order_id) == signature:
+                    continue
+                seen_execution[numeric_order_id] = signature
+                fills.append(
+                    ReplayFill(
+                        client_order_id=client_order_id,
+                        timestamp_ns=int(order.exch_timestamp),
+                        price=Decimal(str(order.exec_price)),
+                        quantity=quantity,
+                    ),
+                )
+
+        open_order_count = 0
+        orders = backtest.orders(0)
+        for numeric_order_id in numeric_to_client:
+            order = orders.get(numeric_order_id)
+            if order is not None and order.status in {hft.NEW, hft.PARTIALLY_FILLED}:
+                open_order_count += 1
+
+        return ReplaySummary(
+            fills=tuple(fills),
+            ending_position=Decimal(str(backtest.position(0))),
+            open_order_count=open_order_count,
+        )
+    finally:
+        close_result = int(backtest.close())
+        if close_result != 0:
+            raise RuntimeError(f"hftbacktest close failed: {close_result}")
+
+
+__all__ = [
+    "HftReplayConfig",
+    "MicrostructureFixture",
+    "MicrostructureRow",
+    "ReplayFill",
+    "ReplaySummary",
+    "load_microstructure_fixture",
+    "replay_passive_orders",
+    "require_hftbacktest_runtime",
+]
