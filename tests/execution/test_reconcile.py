@@ -112,7 +112,13 @@ def test_matching_partial_fill_remains_working() -> None:
 
 def test_desired_quantity_below_already_filled_quantity_is_invalid() -> None:
     desired = (_intent(quantity="0.03"),)
-    working = (_working(desired[0], quantity=Decimal("0.10"), filled_quantity=Decimal("0.04")),)
+    working = (
+        _working(
+            desired[0],
+            quantity=Decimal("0.10"),
+            filled_quantity=Decimal("0.04"),
+        ),
+    )
 
     with pytest.raises(ValueError, match="filled quantity"):
         reconcile_passive_orders(desired=desired, working=working)
@@ -120,7 +126,13 @@ def test_desired_quantity_below_already_filled_quantity_is_invalid() -> None:
 
 def test_changed_total_quantity_cancels_before_replace() -> None:
     desired = (_intent(quantity="0.08"),)
-    working = (_working(desired[0], quantity=Decimal("0.10"), filled_quantity=Decimal("0.04")),)
+    working = (
+        _working(
+            desired[0],
+            quantity=Decimal("0.10"),
+            filled_quantity=Decimal("0.04"),
+        ),
+    )
 
     assert reconcile_passive_orders(desired=desired, working=working) == ReconciliationPlan(
         cancel=(desired[0].client_order_id,),
