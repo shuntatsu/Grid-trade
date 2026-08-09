@@ -318,7 +318,9 @@ def canonical_events_to_hftbacktest_fixture(
     if not initial_book_seen:
         raise ValueError("canonical replay requires an initial book snapshot")
     if not feed_rows:
-        raise ValueError("canonical replay requires at least one feed event after the initial snapshot")
+        raise ValueError(
+            "canonical replay requires at least one feed event after the initial snapshot"
+        )
 
     fixture = MicrostructureFixture(snapshot=tuple(snapshot_rows), feed=tuple(feed_rows))
     return CanonicalHftReplayFixture(
