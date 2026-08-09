@@ -6,7 +6,7 @@ Research-first adaptive grid and market-making system for a single crypto perpet
 
 **RESEARCH / NO-GO FOR PRODUCTION**
 
-This repository is intentionally separated from `trade_rl`. Its first objective is to determine whether a long-biased adaptive grid has a reproducible out-of-sample edge after realistic execution costs and tail-risk controls. Live capital deployment is out of scope until explicit production controls and authorization are implemented.
+This repository is intentionally separated from `trade_rl`. Its objective is to determine whether a long-biased adaptive grid has a reproducible out-of-sample edge after realistic execution costs and tail-risk controls. Completing a strategy mechanic does not establish profitability. Live capital deployment remains out of scope until explicit production controls, realistic historical evidence, and reviewed authorization exist.
 
 ## Core hypothesis
 
@@ -14,62 +14,56 @@ The baseline is not a permanently symmetric fixed grid. The candidate strategy i
 
 **Long-biased adaptive grid + inventory control + conditional short overlay**
 
-The system maintains a continuous target inventory rather than switching directly between all-long and all-short states. Grid center, spacing, side intensity, and order size adapt to market state while a separate risk controller can reduce or flatten exposure.
+The system maintains a continuous target inventory rather than switching directly between all-long and all-short states. Grid center, spacing, side intensity, and order direction adapt to causal market state while a separate hard-risk layer retains veto authority.
 
-Primary research sequence:
+Research sequence:
 
-1. Fixed long grid baseline
-2. Dynamic/re-centered grid
-3. Volatility-adaptive spacing
-4. Inventory-target / inventory-skew control
-5. Partial de-risking
-6. Conditional short overlay
-7. Funding-aware bias
-8. Order-flow / microprice-aware quoting
+1. S0 — Fixed long grid baseline
+2. S1 — Dynamic/re-centered grid
+3. S2 — Volatility-adaptive spacing
+4. S3 — Inventory-target / inventory-skew control
+5. S4 — Partial de-risking
+6. S5 — Conditional short overlay
+7. S6 — Funding-aware bias
+8. S7 — Order-flow / microprice-aware reference
 
-Every stage must demonstrate incremental value in walk-forward out-of-sample evaluation. Complexity that does not improve robust results is removed.
+Every stage remains independently ablatable. Complexity that does not improve robust walk-forward/OOS results is intended to be removed.
 
-## Milestone 1 — deterministic S0 foundation
+## S0 — deterministic fixed-grid foundation
 
-The `grid-core` implementation branch contains the first research foundation:
+The initial foundation provides:
 
 - immutable causal market and passive-order contracts;
-- deterministic S0 fixed-long grid geometry;
+- deterministic fixed-long grid geometry;
 - cancel-before-replace working-order reconciliation;
 - partial-fill and duplicate-order fail-closed handling;
-- an independent hard risk controller which can block new risk or require flattening;
-- canonical JSONL evidence with SHA-256 run digests;
-- a pinned `hftbacktest==2.4.4` microstructure replay adapter using risk-adverse queueing, partial fills, explicit tick/lot sizes, and finite latency-aware replay timeouts;
-- a pinned `nautilus_trader==1.230.0` construct-only mapper for GTC post-only limit orders;
-- a deterministic S0 runner which performs duplicate replay and refuses to claim production authorization or alpha validation.
+- an independent hard Risk controller which can block new risk or require flattening;
+- canonical JSON Evidence with SHA-256 run digests;
+- pinned `hftbacktest==2.4.4` microstructure replay using risk-adverse queueing, partial fills, explicit tick/lot sizes, and finite latency-aware replay timeouts;
+- pinned `nautilus_trader==1.230.0` construct-only mapping for GTC post-only limit orders;
+- deterministic research runners which refuse to claim production authorization or alpha validation.
 
-The checked-in synthetic S0 fixture is execution-mechanics evidence only. It validates deterministic order generation, queue-sensitive partial fills, risk gating, evidence closure, and runtime integration.
+The checked-in synthetic fixtures are execution-mechanics evidence only. They do not represent historical Hyperliquid profitability.
 
-## S1 — pure Dynamic Center mechanics
+## S1 — Dynamic Center mechanics
 
-S1 adds one isolated strategy change: a stateful center that re-anchors only after a configurable mid-price deviation threshold is reached, with a configurable maximum movement per decision.
+S1 adds a stateful center which re-anchors only after a configurable mid-price deviation threshold is reached and is bounded by a configurable maximum movement per decision.
 
-S1 deliberately does **not** add trend prediction, volatility-adaptive spacing, inventory targeting/skew, short exposure, funding bias, order-book imbalance, microprice, adaptive sizing, or RL. Those remain separate later ablations.
+Important mechanics:
 
-Important S1 mechanics:
-
-- the S0 comparison arm keeps the episode-initial center fixed;
 - S1 uses only current causal mid plus previous effective center state;
 - tick-rounded ladders are compared economically before a center change is committed;
-- a numerical center change which produces the same executable prices does not increment generation or reset queue priority;
-- effective re-anchors reuse the existing cancel-before-replace reconciler;
-- the same center decision is retained across cancel and later submission phases instead of being recomputed;
-- hard risk is rechecked before replacement submission, and a failed risk check rolls back the uncommitted center/generation;
-- projected full-ladder position risk is owned by the shared Risk layer, not reimplemented by S0 or S1;
-- an Application layer coordinates Strategy, Risk, and Execution so the Strategy layer remains pure.
+- numerical movement which produces the same executable prices does not increment generation or reset queue priority;
+- re-anchors reuse cancel-before-replace reconciliation;
+- the same policy decision survives cancel and later submission instead of being recomputed;
+- hard Risk is rechecked before replacement submission;
+- rejected candidates never become authoritative state.
 
-The checked-in S1 comparison runner is explicitly `policy_reconciliation_only`. It measures center drift, generations, cancels, submissions, and queue-reset mechanics with deterministic Evidence. It does not infer fills or claim economic profitability from the controlled center path.
+The S1 comparison runner is `policy_reconciliation_only`: it measures center drift, generations, cancels, submissions, and queue-reset mechanics without inferring fills or economic PnL.
 
-## S2 — volatility-adaptive spacing mechanics
+## S2 — Volatility-Adaptive Spacing mechanics
 
-S2 changes only ladder spacing on top of S1 Dynamic Center. It maps the current causal realized-volatility value to an integer basis-point spacing, bounded by explicit minimum/maximum limits and a conservative execution-cost floor.
-
-The maintained S2 rule is:
+S2 changes spacing on top of S1 Dynamic Center. Current causal realized volatility is mapped to integer basis-point spacing, bounded by explicit minimum/maximum limits and a conservative execution-cost floor.
 
 ```text
 volatility_spacing_bps = realized_volatility × 10,000 × volatility_multiplier
@@ -79,69 +73,138 @@ spacing_bps = ceil(min(max_spacing_bps,
                            volatility_spacing_bps)))
 ```
 
-Important S2 mechanics:
+Important mechanics:
 
-- spacing uses `Decimal` arithmetic and rounds upward only at final integer-bps conversion;
-- low volatility may narrow the grid but never below the configured cost floor;
+- `Decimal` arithmetic is used and spacing rounds upward only at final integer-bps conversion;
+- low volatility cannot narrow below the configured execution-cost floor;
 - high volatility widens spacing up to the configured maximum;
 - center and spacing are evaluated as one executable economic ladder, so simultaneous changes advance generation at most once;
-- a numerical spacing/center change which is tick-equivalent to the working ladder does not reset queue priority;
-- a shared stage-independent Application primitive owns Risk evaluation, replacement-aware open-order accounting, cancel-before-replace, post-cancel Risk recheck, and state-commit timing;
-- rejected candidate spacing/center values never become authoritative state;
-- canonical Evidence now records `SPACING_DECISION` together with center, Risk, and reconciliation decisions;
-- CI checks S0, S1, and S2 Evidence digests in independent Python processes.
+- tick-equivalent changes do not reset queue priority;
+- a shared Application primitive owns Risk evaluation, replacement-aware open-order accounting, cancel-before-replace, post-cancel Risk recheck, and state-commit timing;
+- canonical Evidence includes `SPACING_DECISION`.
 
-The checked-in S2 comparison runner remains `policy_reconciliation_only`: it demonstrates deterministic low→high→low volatility spacing transitions and fail-closed state/reconciliation semantics without inventing fills or PnL. S2 therefore remains **NO-GO for strategy promotion** until continuous Tier-2 L2 replay and sealed walk-forward/OOS evaluation quantify fill probability, turnover, adverse selection, fees, and realized economics.
+## S3–S7 — adaptive inventory, defense, short, funding, and order-book mechanics
 
-S0 through S2 do not currently establish:
+The adaptive policy is staged by `AdaptiveStage`, so S3 through S7 can be enabled independently on the same causal fixture.
 
-- historical Hyperliquid profitability;
-- a proven adaptive-grid edge;
-- value from inventory targeting or the conditional short overlay;
-- realistic historical Hyperliquid queue position across dynamic re-anchors and spacing changes;
-- production readiness or live-capital safety;
-- permission to trade real funds.
+### S3 — Inventory Target and Skew
+
+S3 introduces a bounded target inventory and current-inventory deviation. The deviation can shift the reservation/reference price and suppress the side of the ladder that would worsen inventory imbalance.
+
+The adaptive ladder supports all required passive orientations:
+
+- long orientation: new-risk BUYs plus reduce-only SELLs;
+- short orientation: new-risk SELLs plus reduce-only BUYs;
+- target flat while long: reduce-only SELLs only;
+- target flat while short: reduce-only BUYs only.
+
+Strategy-level inventory capacity is enforced before Hard Risk evaluates the candidate ladder.
+
+### S4 — Partial De-risking
+
+S4 can progressively shrink the long target as the causal trend/risk signal deteriorates. The de-risk component itself is not permitted to create a short target. This keeps defensive exposure reduction separate from short alpha assumptions.
+
+A Hard Risk decision with `allow_new_risk=False` may still accept and commit an **exact, entirely reduce-only candidate** when Risk did not request cancel-all or target-flat. A mixed candidate which Risk truncates is not allowed to smuggle an unapproved state commit through its reduce-only subset.
+
+### S5 — Conditional Short Overlay
+
+S5 adds negative target inventory only after the flat-before-reverse contract is satisfied.
+
+```text
+Long → Flat → Short
+Short → Flat → Long
+```
+
+Passing an opposite-sign target while non-flat fails closed. In strong bearish conditions a long position first receives only reduce-only flattening intents; a later decision from flat may create new-risk passive SELL intents.
+
+### S6 — Funding-Aware Bias
+
+S6 applies a bounded funding-derived target shift after the S5 directional target. Funding can strengthen or weaken an existing directional target, but it cannot bypass the absolute inventory cap or flat-before-reverse rule.
+
+### S7 — Order-Book / Microprice Reference
+
+S7 adjusts the quoting reference from causal microprice and order-book imbalance. It does not alter Hard Risk limits or directly create additional inventory capacity. Its effect remains independently removable through the stage gate.
+
+### Shared adaptive mechanics
+
+- center, spacing, inventory, funding, and order-book changes are collapsed into one economic-ladder comparison;
+- generation advances only when executable side/price/quantity/reduce-only semantics change;
+- tick-collapsed duplicate levels are safely skipped rather than emitting multiple logically distinct levels at the same price;
+- cancel-before-replace retains the original candidate decision across the cancellation boundary;
+- Risk is re-evaluated before replacement submission;
+- optional runtime dependencies remain outside core Strategy/Application layers.
+
+## Deterministic adaptive Evidence
+
+The checked-in S3–S7 comparison runner executes the same controlled, stage-neutral exogenous position path through Strategy → Risk → Execution reconciliation for every stage.
+
+It records:
+
+- center and spacing decisions;
+- de-risk and conditional-short decisions;
+- funding and inventory decisions;
+- order-book reference decisions;
+- Risk decisions;
+- cancel/submit mechanics;
+- reduce-only and new-risk short submissions;
+- canonical per-stage and aggregate SHA-256 evidence digests.
+
+The controlled runner deliberately does **not** infer fills from its exogenous position path and sets PnL to zero. It is a deterministic mechanics/ablation proof, not a profitability backtest.
 
 ## Execution and research architecture
 
-Planned OSS reuse:
+OSS reuse:
 
-- **NautilusTrader** — primary trading/runtime framework and Hyperliquid data/execution integration.
-- **hftbacktest** — high-frequency L2/L3 research, queue-position and latency-sensitive fill simulation.
-- **Hyperliquid official Python SDK** — independent conformance/diagnostic oracle where useful.
-- **Hummingbot** — reference implementation source for established market-making ideas such as Avellaneda–Stoikov; not intended as the authoritative runtime.
+- **NautilusTrader** — primary event-driven runtime and intended Hyperliquid data/execution integration. The maintained construct-only adapter preserves BUY/SELL and reduce-only semantics when producing GTC post-only limit orders; it does not submit orders in tests.
+- **hftbacktest** — L2/L3-oriented research oracle for queue-sensitive passive fills and latency assumptions. Both BUY and SELL replay paths are tested. The current replay adapter does **not** model exchange-side `reduce_only` enforcement, so reduce-only safety remains a Strategy/Risk/Nautilus boundary, not an hftbacktest claim.
+- **Hyperliquid official Python SDK** — optional independent conformance/diagnostic oracle.
+- **Hummingbot** — reference source for established market-making ideas; not an authoritative runtime.
 
-Core dependency direction is intentionally constrained:
+Dependency direction is intentionally constrained:
 
 - `domain/` contains immutable contracts and does not depend on higher layers;
-- `strategy/` contains pure grid/center/spacing policy and does not call Risk or Execution;
+- `strategy/` contains pure policy and does not call Risk or Execution;
 - `risk/` owns hard veto logic;
-- `execution/` owns runtime-neutral order reconciliation;
-- `application/` coordinates Strategy, Risk, and Execution;
-- `research/` runs controlled experiments and evidence workflows;
-- `integrations/` contains external-runtime mappings.
+- `execution/` owns runtime-neutral reconciliation;
+- `application/` coordinates Strategy, Risk, and Execution and is prevented from depending back on Evidence, Integrations, or Research;
+- `research/` owns controlled experiments and evidence workflows;
+- `integrations/` owns external-runtime mappings.
 
 Architecture tests prevent optional hftbacktest/Nautilus dependencies from leaking into core layers.
+
+## What S0–S7 mechanics do not establish
+
+The current implementation does **not** establish:
+
+- historical Hyperliquid profitability;
+- a proven adaptive-grid alpha edge;
+- that any S3–S7 increment improves risk-adjusted returns;
+- realistic historical queue position throughout dynamic cancel/requote lifecycles;
+- robustness to real fees, rebates, funding, latency, adverse selection, outages, or liquidation pressure;
+- sealed walk-forward/OOS success;
+- production readiness or permission to trade real funds.
+
+The next economic gate is continuous Tier-2 microstructure replay with realistic fees, funding, queue and latency assumptions, followed by sealed walk-forward/OOS evaluation and stress testing. A stage which fails its incremental gate should be removed rather than rescued by adding more complexity.
 
 ## Research principles
 
 - Single instrument first.
 - No future leakage.
 - Deterministic and reproducible evidence.
-- Realistic fees, funding, queueing, partial fills, latency, and adverse selection.
+- Realistic fees, funding, queueing, partial fills, latency, and adverse selection before economic promotion.
 - Explicit PnL attribution: spread, directional exposure, funding, fees, inventory mark-to-market, adverse-selection markout, emergency execution cost.
 - Walk-forward validation with a sealed final test.
 - Bull, bear, sideways, crash, high-volatility, and low-volatility regime reporting.
-- Buy-and-hold and fixed-grid baselines remain visible throughout research.
-- Risk controls are outside the strategy policy and may veto or flatten it.
+- Buy-and-hold and simpler grid baselines remain visible throughout research.
+- Hard Risk is outside the strategy policy and may veto or flatten it.
 
 ## Production safety
 
-No strategy result alone authorizes live trading. Production requires separate execution reconciliation, secret management, margin controls, kill switches, monitoring, and reviewed authorization.
+No strategy result alone authorizes live trading. Production requires separate exchange reconciliation, secret management, margin controls, kill switches, monitoring, fault recovery, and reviewed authorization.
 
 ## Design
 
-Design specifications are maintained under `docs/superpowers/specs/`. Implementation plans are maintained under `docs/superpowers/plans/`.
+Design specifications are maintained under `docs/superpowers/specs/`. Implementation plans are maintained under `docs/superpowers/plans/`. Architecture/self-review records are maintained under `docs/superpowers/reviews/`.
 
 ## License
 
