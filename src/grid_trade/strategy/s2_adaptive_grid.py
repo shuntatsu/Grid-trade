@@ -67,9 +67,7 @@ class S2GridDecision:
                 raise ValueError(f"{field_name} must be positive")
         if self.previous_generation < 0 or self.effective_generation < 0:
             raise ValueError("generations must be non-negative")
-        expected_generation = self.previous_generation + (
-            1 if self.economic_ladder_changed else 0
-        )
+        expected_generation = self.previous_generation + (1 if self.economic_ladder_changed else 0)
         if self.effective_generation != expected_generation:
             raise ValueError("effective_generation must track one economic ladder change")
         if not self.center_deviation_bps.is_finite():
@@ -141,10 +139,9 @@ def decide_s2_grid(
         generation=candidate_generation,
         stage="s2",
     )
-    economic_ladder_changed = (
-        ladder_economic_signature(candidate_ladder)
-        != ladder_economic_signature(current_ladder)
-    )
+    economic_ladder_changed = ladder_economic_signature(
+        candidate_ladder
+    ) != ladder_economic_signature(current_ladder)
 
     if economic_ladder_changed:
         candidate_state = S2GridState(
