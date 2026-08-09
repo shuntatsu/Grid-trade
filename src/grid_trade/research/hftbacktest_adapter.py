@@ -89,6 +89,12 @@ class MicrostructureFixture:
             raise ValueError("snapshot section contains a non-snapshot row")
         if any(row.kind.startswith("snapshot_") for row in self.feed):
             raise ValueError("feed section contains a snapshot row")
+        local_times = [row.local_ts for row in self.feed]
+        exchange_times = [row.exch_ts for row in self.feed]
+        if local_times != sorted(local_times):
+            raise ValueError("feed local timestamps must be monotonic")
+        if exchange_times != sorted(exchange_times):
+            raise ValueError("feed exchange timestamps must be monotonic")
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,13 +135,9 @@ def load_microstructure_fixture(path: Path) -> MicrostructureFixture:
     return MicrostructureFixture(snapshot=tuple(snapshot), feed=tuple(feed))
 
 
-def _runtime_modules() -> tuple[ModuleType, ModuleType, ModuleType]:
+def _runtime_modules() -> tuple[ModuleType, ModuleType]:
     require_hftbacktest_runtime()
-    return (
-        import_module("hftbacktest"),
-        import_module("hftbacktest.types"),
-        import_module("numpy"),
-    )
+    return import_module("hftbacktest"), import_module("numpy")
 
 
 def _event_flags(hft: ModuleType, row: MicrostructureRow) -> int:
@@ -178,6 +180,16 @@ def _validate_order_alignment(
         raise ValueError(f"order {intent.client_order_id} quantity is not lot aligned")
 
 
+def _wait_timeout_ns(fixture: MicrostructureFixture, config: HftReplayConfig) -> int:
+    all_times = [
+        *(row.local_ts for row in fixture.feed),
+        *(row.exch_ts for row in fixture.feed),
+    ]
+    span = max(all_times) - min(all_times)
+    latency_allowance = config.entry_latency_ns + config.response_latency_ns
+    return max(1, span + latency_allowance + 1)
+
+
 def _submit_order(
     hft: ModuleType,
     backtest: Any,
@@ -215,8 +227,8 @@ def replay_passive_orders(
     intents: tuple[PassiveOrderIntent, ...],
     config: HftReplayConfig,
 ) -> ReplaySummary:
-    hft, hft_types, np = _runtime_modules()
-    until_end_of_data = int(hft_types.UNTIL_END_OF_DATA)
+    hft, np = _runtime_modules()
+    wait_timeout_ns = _wait_timeout_ns(fixture, config)
     if len({intent.client_order_id for intent in intents}) != len(intents):
         raise ValueError("passive replay requires unique client_order_id values")
     for intent in intents:
@@ -242,7 +254,7 @@ def replay_passive_orders(
     fills: list[ReplayFill] = []
 
     try:
-        bootstrap_result = int(backtest.wait_next_feed(False, until_end_of_data))
+        bootstrap_result = int(backtest.wait_next_feed(False, wait_timeout_ns))
         if bootstrap_result not in {0, 2}:
             raise RuntimeError(
                 f"expected successful market-feed bootstrap, got {bootstrap_result}",
@@ -259,7 +271,7 @@ def replay_passive_orders(
             )
 
         while True:
-            result = int(backtest.wait_next_feed(True, until_end_of_data))
+            result = int(backtest.wait_next_feed(True, wait_timeout_ns))
             if result == 1:
                 break
             if result not in {0, 2, 3}:
