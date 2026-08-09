@@ -43,6 +43,7 @@ class CalibrationEngineState:
     last_timestamp: datetime | None = None
     source_id: str | None = None
     instrument_id: str | None = None
+    config: CalibrationEngineConfig | None = None
 
     def __post_init__(self) -> None:
         if self.generation < 0:
@@ -62,7 +63,7 @@ class CalibrationEngineState:
         has_history = bool(self.prices or self.volatility_state.prices or self.funding_state.values)
 
         if self.generation == 0:
-            if identity_initialized or timestamp_initialized or has_history:
+            if identity_initialized or timestamp_initialized or has_history or self.config is not None:
                 raise ValueError("generation zero requires pristine calibration state")
             return
 
@@ -72,8 +73,20 @@ class CalibrationEngineState:
             raise ValueError("initialized source_id and instrument_id must be non-empty")
         if not self.prices or not self.volatility_state.prices:
             raise ValueError("positive generation requires price history")
-        if self.prices[-1] != self.volatility_state.prices[-1]:
-            raise ValueError("price history and volatility state must share the latest price")
+        if self.config is None:
+            raise ValueError("positive generation requires frozen calibration config")
+        if self.generation < max(
+            len(self.prices),
+            len(self.volatility_state.prices),
+            len(self.funding_state.values),
+        ):
+            raise ValueError("generation must cover all retained calibration history")
+
+        volatility_prices = self.volatility_state.prices
+        if len(volatility_prices) > len(self.prices) or (
+            tuple(self.prices[-len(volatility_prices) :]) != volatility_prices
+        ):
+            raise ValueError("price history must contain volatility state as an exact suffix")
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +152,7 @@ def _overall_readiness(
 def _validate_observation_sequence(
     state: CalibrationEngineState,
     observation: CalibrationObservation,
+    config: CalibrationEngineConfig,
 ) -> None:
     if state.last_timestamp is not None and observation.timestamp <= state.last_timestamp:
         raise ValueError("observation timestamp must be strictly newer than last_timestamp")
@@ -146,6 +160,8 @@ def _validate_observation_sequence(
         raise ValueError("source_id must remain constant within one calibration state")
     if state.instrument_id is not None and observation.instrument_id != state.instrument_id:
         raise ValueError("instrument_id must remain constant within one calibration state")
+    if state.config is not None and config != state.config:
+        raise ValueError("calibration config must remain frozen within one engine state")
 
 
 def update_calibration_engine(
@@ -153,7 +169,7 @@ def update_calibration_engine(
     observation: CalibrationObservation,
     config: CalibrationEngineConfig,
 ) -> CalibrationUpdate:
-    _validate_observation_sequence(state, observation)
+    _validate_observation_sequence(state, observation, config)
 
     volatility_state, volatility = update_robust_volatility(
         state.volatility_state,
@@ -178,6 +194,7 @@ def update_calibration_engine(
         last_timestamp=observation.timestamp,
         source_id=observation.source_id,
         instrument_id=observation.instrument_id,
+        config=config,
     )
     unavailable_microstructure = CalibrationComponentStatus(
         ready=False,
