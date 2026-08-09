@@ -32,9 +32,7 @@ def _config() -> UniversalCalibrationConfig:
             intensity=IntensityCalibrationConfig(
                 3, 20, Decimal("0.5"), Decimal("1.5"), 21, Decimal("0.1")
             ),
-            ofi_impact=OfiImpactConfig(
-                8, 2, Decimal("0.01"), Decimal("0.01"), Decimal("2")
-            ),
+            ofi_impact=OfiImpactConfig(8, 2, Decimal("0.01"), Decimal("0.01"), Decimal("2")),
             execution_cost=ExecutionCostConfig(
                 8, 2, Decimal("0.75"), Decimal("0.0002"), Decimal("0.003")
             ),
