@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, localcontext
 
 from grid_trade.application.calibrated_policy_inputs import (
+    CalibratedAdaptiveInputs,
     CalibratedPolicyInputConfig,
     compose_calibrated_adaptive_inputs,
 )
@@ -11,8 +12,8 @@ from grid_trade.calibration.contracts import (
     CalibrationComponentStatus,
     CalibrationReadiness,
 )
-from grid_trade.calibration.execution_cost import ExecutionCostEstimate
-from grid_trade.calibration.intensity import IntensityEstimate
+from grid_trade.calibration.execution_cost import ExecutionCostConfig, ExecutionCostEstimate
+from grid_trade.calibration.intensity import IntensityCalibrationConfig, IntensityEstimate
 from grid_trade.calibration.microstructure_contracts import (
     MicrostructureReadiness,
     TopOfBookObservation,
@@ -22,8 +23,6 @@ from grid_trade.calibration.microstructure_engine import (
     MicrostructureCalibrationEstimate,
     MicrostructureCalibrationState,
 )
-from grid_trade.calibration.execution_cost import ExecutionCostConfig
-from grid_trade.calibration.intensity import IntensityCalibrationConfig
 from grid_trade.calibration.order_flow import (
     OfiImpactConfig,
     OfiImpactEstimate,
@@ -83,7 +82,10 @@ def _market_state(
         estimated_microprice_displacement=None,
         volatility_status=_status(volatility_ready, "ready" if volatility_ready else "warmup"),
         trend_status=_status(trend_ready, "ready" if trend_ready else "warmup"),
-        funding_status=_status(funding is not None, "ready" if funding is not None else "unavailable"),
+        funding_status=_status(
+            funding is not None,
+            "ready" if funding is not None else "unavailable",
+        ),
         microstructure_status=_status(False, "external_phase_b"),
     )
 
@@ -268,7 +270,7 @@ def _compose(
     micro_ready: bool = True,
     execution_floor: str = "0.0034",
     instrument_id: str = "AAA-PERP",
-):
+) -> CalibratedAdaptiveInputs:
     return compose_calibrated_adaptive_inputs(
         snapshot=_snapshot(),
         calibrated_market=_market_state(instrument_id=instrument_id) if market is None else market,
