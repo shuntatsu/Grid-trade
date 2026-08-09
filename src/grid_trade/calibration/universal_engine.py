@@ -71,6 +71,8 @@ def _validate_observation_pair(
         raise ValueError("foundation and microstructure source identity must match")
     if observation.instrument_id != book.instrument_id:
         raise ValueError("foundation and microstructure instrument identity must match")
+    if observation.mid != book.mid:
+        raise ValueError("foundation and microstructure mid must match")
 
 
 def update_universal_calibration(
