@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -34,6 +34,18 @@ def test_trend_is_invariant_to_multiplying_all_prices() -> None:
     assert a.ready is True
     assert a.z_score == b.z_score
     assert a.score == b.score
+
+
+def test_trend_is_independent_of_ambient_decimal_precision() -> None:
+    prices = ["100", "101.37", "99.81", "102.44"]
+    with localcontext() as context:
+        context.prec = 10
+        low_precision = _trend(prices, "0.013579")
+    with localcontext() as context:
+        context.prec = 50
+        high_precision = _trend(prices, "0.013579")
+
+    assert low_precision == high_precision
 
 
 def test_trend_sign_tracks_direction() -> None:
