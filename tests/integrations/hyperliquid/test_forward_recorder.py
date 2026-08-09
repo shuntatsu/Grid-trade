@@ -37,9 +37,7 @@ def test_append_fsyncs_and_preserves_exact_payload_bytes(tmp_path: Path) -> None
 
     assert ordinal == 0
     assert sync_calls
-    assert read_segment_records(writer.partial_path) == (
-        (1_754_450_974_240_000_000, payload),
-    )
+    assert read_segment_records(writer.partial_path) == ((1_754_450_974_240_000_000, payload),)
 
     segment = writer.finalize(acquired_at=datetime(2026, 8, 10, 5, 0, tzinfo=UTC))
     assert segment.continuity_epoch == 3
