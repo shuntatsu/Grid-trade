@@ -127,9 +127,7 @@ def test_reanchor_cancels_old_generation_before_candidate_submission() -> None:
 
     assert first.candidate_state.generation == 1
     assert first.next_state == state
-    assert first.reconciliation.cancel == tuple(
-        sorted(order.client_order_id for order in working)
-    )
+    assert first.reconciliation.cancel == tuple(sorted(order.client_order_id for order in working))
     assert first.reconciliation.submit == ()
 
     second = continue_s2_adaptive_grid_reconciliation(
