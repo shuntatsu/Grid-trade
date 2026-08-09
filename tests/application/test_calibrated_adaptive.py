@@ -1,4 +1,5 @@
 import datetime as dt
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -28,7 +29,6 @@ def _market(
     funding_ready: bool = True,
     micro_ready: bool = True,
     order_book_score: Decimal | None = Decimal("0.3"),
-    microprice_displacement: Decimal | None = Decimal("0.0005"),
 ) -> CalibratedMarketState:
     return CalibratedMarketState(
         timestamp=dt.datetime(2026, 8, 10, 1, tzinfo=dt.UTC),
@@ -41,7 +41,7 @@ def _market(
         quote_distance_scale=Decimal("0.0015") if micro_ready else None,
         execution_cost_floor=Decimal("0.0008") if micro_ready else None,
         order_book_score=order_book_score if micro_ready else None,
-        estimated_microprice_displacement=microprice_displacement if micro_ready else None,
+        estimated_microprice_displacement=Decimal("0.0005") if micro_ready else None,
         volatility_status=_status(ready=True),
         trend_status=_status(ready=True),
         funding_status=_status(ready=funding_ready, reason="unavailable"),
@@ -106,27 +106,24 @@ def _venue(*, price_scale: str = "1") -> VenueGridConstraints:
     )
 
 
-def test_preparation_fails_closed_without_ready_microstructure() -> None:
-    result = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(micro_ready=False),
+def _prepare(*, calibrated: CalibratedMarketState | None = None, meta=None, price_scale="1"):
+    return prepare_calibrated_adaptive_inputs(
+        snapshot=_snapshot(price_scale=price_scale),
+        calibrated=calibrated or _market(),
         capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
+        meta=meta or _meta(),
+        venue=_venue(price_scale=price_scale),
     )
 
+
+def test_preparation_fails_closed_without_ready_microstructure() -> None:
+    result = _prepare(calibrated=_market(micro_ready=False))
     assert result.inputs is None
     assert result.reason == "microstructure_not_ready"
 
 
 def test_preparation_derives_qmax_targets_and_spacing_from_relative_inputs() -> None:
-    result = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
-    )
+    result = _prepare()
     assert result.inputs is not None
     inputs = result.inputs
 
@@ -151,53 +148,21 @@ def test_preparation_derives_qmax_targets_and_spacing_from_relative_inputs() -> 
 
 
 def test_preparation_never_rounds_inventory_capacity_up() -> None:
-    result = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
-    )
+    result = _prepare()
     assert result.inputs is not None
     assert result.inputs.effective_q_max <= _capacity().q_max
 
 
 def test_symbol_identity_does_not_change_prepared_numeric_inputs() -> None:
-    left = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(instrument="AAA-PERP"),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
+    assert _prepare(calibrated=_market(instrument="AAA-PERP")) == _prepare(
+        calibrated=_market(instrument="BBB-PERP")
     )
-    right = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(instrument="BBB-PERP"),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
-    )
-
-    assert left == right
 
 
 def test_common_price_scaling_preserves_normalized_strategy_inputs() -> None:
-    base = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
-    )
-    scaled = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(price_scale="100"),
-        calibrated=_market(),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(price_scale="100"),
-    )
+    base = _prepare()
+    scaled = _prepare(price_scale="100")
     assert base.inputs is not None and scaled.inputs is not None
-
     assert base.inputs.effective_q_max == scaled.inputs.effective_q_max
     assert base.inputs.signals == scaled.inputs.signals
     assert base.inputs.policy_config.spacing == scaled.inputs.policy_config.spacing
@@ -209,41 +174,21 @@ def test_common_price_scaling_preserves_normalized_strategy_inputs() -> None:
 
 
 def test_s6_requires_ready_normalized_funding() -> None:
-    result = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
+    result = _prepare(
         calibrated=_market(funding_ready=False),
-        capacity=_capacity(),
         meta=_meta(stage=AdaptiveStage.S6_FUNDING),
-        venue=_venue(),
     )
-
     assert result.inputs is None
     assert result.reason == "funding_not_ready"
 
 
 def test_s7_requires_order_book_outputs() -> None:
-    result = prepare_calibrated_adaptive_inputs(
-        snapshot=_snapshot(),
-        calibrated=_market(order_book_score=None),
-        capacity=_capacity(),
-        meta=_meta(),
-        venue=_venue(),
-    )
-
+    result = _prepare(calibrated=_market(order_book_score=None))
     assert result.inputs is None
     assert result.reason == "order_book_not_ready"
 
 
 def test_invalid_economic_floor_above_max_spacing_fails_closed() -> None:
-    market = _market()
-    market = CalibratedMarketState(
-        **{**market.__dict__, "execution_cost_floor": Decimal("0.02")}
-    )
+    market = replace(_market(), execution_cost_floor=Decimal("0.02"))
     with pytest.raises(ValueError, match="economic spacing floor"):
-        prepare_calibrated_adaptive_inputs(
-            snapshot=_snapshot(),
-            calibrated=market,
-            capacity=_capacity(),
-            meta=_meta(),
-            venue=_venue(),
-        )
+        _prepare(calibrated=market)
