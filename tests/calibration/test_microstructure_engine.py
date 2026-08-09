@@ -14,6 +14,7 @@ from grid_trade.calibration.microstructure_contracts import (
 )
 from grid_trade.calibration.microstructure_engine import (
     MicrostructureCalibrationConfig,
+    MicrostructureCalibrationEstimate,
     MicrostructureCalibrationState,
     update_microstructure_engine,
 )
@@ -115,7 +116,7 @@ def _advance_ready(
     instrument: str = "AAA-PERP",
     price_scale: str = "1",
     size_scale: str = "1",
-) -> tuple[MicrostructureCalibrationState, object]:
+) -> tuple[MicrostructureCalibrationState, MicrostructureCalibrationEstimate]:
     config = _config()
     initial = update_microstructure_engine(
         MicrostructureCalibrationState(),
