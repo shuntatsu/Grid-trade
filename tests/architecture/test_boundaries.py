@@ -101,6 +101,18 @@ def _python_files(layer: str) -> tuple[Path, ...]:
                 "grid_trade.research",
             ),
         ),
+        (
+            "integrations/hyperliquid",
+            (
+                "grid_trade.application",
+                "grid_trade.calibration",
+                "grid_trade.evidence",
+                "grid_trade.execution",
+                "grid_trade.research",
+                "grid_trade.risk",
+                "grid_trade.strategy",
+            ),
+        ),
     ],
 )
 def test_core_layer_dependency_direction(
@@ -127,6 +139,7 @@ def test_optional_runtime_dependencies_stay_out_of_core_layers() -> None:
         "domain",
         "evidence",
         "execution",
+        "integrations/hyperliquid",
         "risk",
         "strategy",
     ):
