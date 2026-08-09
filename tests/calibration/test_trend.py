@@ -4,6 +4,7 @@ import pytest
 
 from grid_trade.calibration.trend import (
     TrendCalibrationConfig,
+    TrendEstimate,
     estimate_normalized_trend,
 )
 from grid_trade.calibration.volatility import VolatilityEstimate
@@ -18,7 +19,7 @@ def _config() -> TrendCalibrationConfig:
     )
 
 
-def _trend(prices: list[str], vol: str):
+def _trend(prices: list[str], vol: str) -> TrendEstimate:
     return estimate_normalized_trend(
         tuple(Decimal(price) for price in prices),
         VolatilityEstimate(scale=Decimal(vol), sample_count=20, ready=True),
@@ -36,8 +37,13 @@ def test_trend_is_invariant_to_multiplying_all_prices() -> None:
 
 
 def test_trend_sign_tracks_direction() -> None:
-    assert _trend(["100", "101", "102", "103"], "0.01").score > 0
-    assert _trend(["103", "102", "101", "100"], "0.01").score < 0
+    up = _trend(["100", "101", "102", "103"], "0.01")
+    down = _trend(["103", "102", "101", "100"], "0.01")
+
+    assert up.score is not None
+    assert down.score is not None
+    assert up.score > 0
+    assert down.score < 0
 
 
 def test_trend_is_bounded() -> None:
