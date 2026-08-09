@@ -138,7 +138,9 @@ def _events(*, include_funding: bool = True) -> tuple[CanonicalEventEnvelope, ..
         _book(1_000_000_000, ask_quantity="0.02", ordinal=0),
         _book(2_000_000_000, ask_quantity="0.03", ordinal=1),
         _trade(3_000_000_000, quantity="0.01", ordinal=0),
-        _trade(4_000_000_000, quantity="0.02", ordinal=1),
+        # Keep the normal Tier-2 path away from hftbacktest 2.4.4's exact-terminal
+        # PartialFillExchange edge. A dedicated regression test covers that fail-closed case.
+        _trade(4_000_000_000, quantity="0.03", ordinal=1),
         _trade(5_000_000_000, quantity="0.02", ordinal=2),
     )
     if include_funding:
