@@ -1,9 +1,30 @@
+from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
 
 from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
-from grid_trade.strategy.fixed_grid import FixedLongGridConfig
 
 _BASIS_POINTS = Decimal(10_000)
+
+
+def _require_finite_positive(value: Decimal, *, field: str) -> None:
+    if not value.is_finite() or value <= 0:
+        raise ValueError(f"{field} must be finite and positive")
+
+
+@dataclass(frozen=True, slots=True)
+class FixedLongGridConfig:
+    levels: int
+    spacing_bps: int
+    order_quantity: Decimal
+    tick_size: Decimal
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.levels <= 50:
+            raise ValueError("levels must be within [1, 50]")
+        if self.spacing_bps <= 0:
+            raise ValueError("spacing_bps must be positive")
+        _require_finite_positive(self.order_quantity, field="order_quantity")
+        _require_finite_positive(self.tick_size, field="tick_size")
 
 
 def _round_down_to_tick(price: Decimal, tick_size: Decimal) -> Decimal:
@@ -52,4 +73,4 @@ def build_long_grid_at_center(
     return tuple(orders)
 
 
-__all__ = ["build_long_grid_at_center"]
+__all__ = ["FixedLongGridConfig", "build_long_grid_at_center"]
