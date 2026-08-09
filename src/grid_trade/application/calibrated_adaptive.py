@@ -194,8 +194,7 @@ def _readiness_reason(
     ):
         return "funding_not_ready"
     if stage >= AdaptiveStage.S7_ORDER_BOOK and (
-        calibrated.order_book_score is None
-        or calibrated.estimated_microprice_displacement is None
+        calibrated.order_book_score is None or calibrated.estimated_microprice_displacement is None
     ):
         return "order_book_not_ready"
     return None
@@ -252,12 +251,8 @@ def prepare_calibrated_adaptive_inputs(
         volatility_min_relative = volatility * meta.min_spacing_vol_units
         intensity_relative = quote_distance * meta.intensity_spacing_multiplier
         min_spacing_bps = max(volatility_min_relative, intensity_relative) * _BASIS_POINTS
-        execution_floor_bps = (
-            execution_cost * meta.execution_cost_multiplier * _BASIS_POINTS
-        )
-        volatility_spacing_bps = (
-            volatility * meta.spacing_volatility_multiplier * _BASIS_POINTS
-        )
+        execution_floor_bps = execution_cost * meta.execution_cost_multiplier * _BASIS_POINTS
+        volatility_spacing_bps = volatility * meta.spacing_volatility_multiplier * _BASIS_POINTS
         max_spacing_bps = (
             volatility * meta.max_spacing_vol_units * _BASIS_POINTS
         ).to_integral_value(rounding=ROUND_FLOOR)
@@ -268,9 +263,7 @@ def prepare_calibrated_adaptive_inputs(
         )
         if max_spacing_bps <= 0 or economic_floor_bps > max_spacing_bps:
             raise ValueError("economic spacing floor must not exceed max spacing")
-        initial_spacing_bps = int(
-            economic_floor_bps.to_integral_value(rounding=ROUND_CEILING)
-        )
+        initial_spacing_bps = int(economic_floor_bps.to_integral_value(rounding=ROUND_CEILING))
         reservation_skew_bps = volatility * meta.reservation_skew_vol_units * _BASIS_POINTS
         order_book_shift_bps = volatility * meta.order_book_shift_vol_units * _BASIS_POINTS
 
