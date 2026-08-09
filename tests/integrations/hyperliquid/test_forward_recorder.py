@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,6 +50,50 @@ def test_append_fsyncs_and_preserves_exact_payload_bytes(tmp_path: Path) -> None
     assert segment.raw_object.identity.sha256 == sha256_bytes(final_path.read_bytes())
 
 
+def test_finalize_atomically_publishes_deterministic_manifest(tmp_path: Path) -> None:
+    directory_sync_calls: list[Path] = []
+    final_path = tmp_path / "btc-l2.gtseg"
+    writer = ForwardSegmentWriter(
+        final_path,
+        instrument="BTC",
+        dataset_type=DatasetType.L2_BOOK,
+        collector_schema_version="hyperliquid-ws-segment-v1",
+        decoder_schema_version="hyperliquid-l2book-v1",
+        continuity_epoch=11,
+        directory_sync_fn=directory_sync_calls.append,
+    )
+    writer.append(b"exact-raw-payload", receive_ts_ns=100)
+
+    segment = writer.finalize(acquired_at=datetime(2026, 8, 10, 5, 0, tzinfo=UTC))
+
+    assert writer.manifest_path.exists()
+    assert not writer.manifest_partial_path.exists()
+    assert directory_sync_calls == [tmp_path, tmp_path]
+    published = json.loads(writer.manifest_path.read_text(encoding="utf-8"))
+    assert published == {
+        "continuity_epoch": 11,
+        "manifest_schema_version": "hyperliquid-forward-segment-manifest-v1",
+        "raw_object": {
+            "acquired_at": "2026-08-10T05:00:00Z",
+            "byte_length": final_path.stat().st_size,
+            "collector_schema_version": "hyperliquid-ws-segment-v1",
+            "complete": True,
+            "dataset_type": "l2_book",
+            "decoder_schema_version": "hyperliquid-l2book-v1",
+            "instrument": "BTC",
+            "receive_end_ns": 100,
+            "receive_start_ns": 100,
+            "sha256": segment.raw_object.identity.sha256,
+            "source_end_ns": None,
+            "source_family": "websocket",
+            "source_locator": str(final_path),
+            "source_start_ns": None,
+        },
+        "record_count": 1,
+    }
+    assert writer.manifest_path.read_bytes().endswith(b"\n")
+
+
 def test_interrupted_segment_remains_incomplete_and_cannot_be_accepted(tmp_path: Path) -> None:
     final_path = tmp_path / "btc-trades.gtseg"
     writer = ForwardSegmentWriter(
@@ -66,6 +111,7 @@ def test_interrupted_segment_remains_incomplete_and_cannot_be_accepted(tmp_path:
     assert segment.raw_object.complete is False
     assert writer.partial_path.exists()
     assert not final_path.exists()
+    assert not writer.manifest_path.exists()
     with pytest.raises(ValueError, match="incomplete"):
         DatasetManifest(
             instrument="BTC",
