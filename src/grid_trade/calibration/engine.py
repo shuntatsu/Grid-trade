@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
@@ -37,8 +37,8 @@ class CalibrationEngineConfig:
 @dataclass(frozen=True, slots=True)
 class CalibrationEngineState:
     prices: tuple[Decimal, ...] = ()
-    volatility_state: RobustVolatilityState = RobustVolatilityState()
-    funding_state: FundingCalibrationState = FundingCalibrationState()
+    volatility_state: RobustVolatilityState = field(default_factory=RobustVolatilityState)
+    funding_state: FundingCalibrationState = field(default_factory=FundingCalibrationState)
     generation: int = 0
     last_timestamp: datetime | None = None
     source_id: str | None = None
@@ -49,9 +49,10 @@ class CalibrationEngineState:
             raise ValueError("generation must be non-negative")
         if (self.source_id is None) != (self.instrument_id is None):
             raise ValueError("source_id and instrument_id availability must match")
-        if self.last_timestamp is not None:
-            if self.last_timestamp.tzinfo is None or self.last_timestamp.utcoffset() is None:
-                raise ValueError("last_timestamp must be timezone-aware")
+        if self.last_timestamp is not None and (
+            self.last_timestamp.tzinfo is None or self.last_timestamp.utcoffset() is None
+        ):
+            raise ValueError("last_timestamp must be timezone-aware")
         for price in self.prices:
             if not isinstance(price, Decimal) or not price.is_finite() or price <= 0:
                 raise ValueError("prices must contain finite positive Decimals")
