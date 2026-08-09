@@ -276,8 +276,8 @@ class BookVisibilityTracker:
 
             for level in current_levels:
                 key = (side, level.price)
-                state = states.get(level.price)
-                if state in {_VisibilityState.ZERO, _VisibilityState.LOST}:
+                prior_state = states.get(level.price)
+                if prior_state in {_VisibilityState.ZERO, _VisibilityState.LOST}:
                     epoch_id = self._epochs.get(key, 0) + 1
                     self._epochs[key] = epoch_id
                     change = VisibilityChange.REESTABLISHED
