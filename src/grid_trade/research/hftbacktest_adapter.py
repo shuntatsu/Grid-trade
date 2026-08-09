@@ -103,6 +103,18 @@ class ReplayFill:
     timestamp_ns: int
     price: Decimal
     quantity: Decimal
+    remaining_quantity: Decimal
+
+    def __post_init__(self) -> None:
+        if not self.client_order_id.strip():
+            raise ValueError("client_order_id must be non-empty")
+        if self.timestamp_ns < 0:
+            raise ValueError("timestamp_ns must be non-negative")
+        _require_finite_positive(self.price, field="price")
+        _require_finite_positive(self.quantity, field="quantity")
+        _require_finite(self.remaining_quantity, field="remaining_quantity")
+        if self.remaining_quantity < 0:
+            raise ValueError("remaining_quantity must be non-negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,7 +281,7 @@ def replay_passive_orders(
     backtest = hft.HashMapMarketDepthBacktest([asset])
     numeric_to_client: dict[int, str] = {}
     side_by_client_id = {intent.client_order_id: intent.side for intent in intents}
-    seen_execution: dict[int, tuple[int, Decimal, Decimal]] = {}
+    seen_execution: dict[int, tuple[int, Decimal, Decimal, Decimal]] = {}
     fills: list[ReplayFill] = []
 
     try:
@@ -309,10 +321,12 @@ def replay_passive_orders(
                 quantity = Decimal(str(order.exec_qty))
                 if quantity <= 0:
                     continue
+                remaining_quantity = Decimal(str(order.leaves_qty))
                 signature = (
                     int(order.exch_timestamp),
                     Decimal(str(order.exec_price)),
                     quantity,
+                    remaining_quantity,
                 )
                 if seen_execution.get(numeric_order_id) == signature:
                     continue
@@ -323,6 +337,7 @@ def replay_passive_orders(
                         timestamp_ns=int(order.exch_timestamp),
                         price=Decimal(str(order.exec_price)),
                         quantity=quantity,
+                        remaining_quantity=remaining_quantity,
                     ),
                 )
 
