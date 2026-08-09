@@ -158,7 +158,9 @@ def _record_risk_rejection(decision: RiskDecision, reasons_seen: list[str]) -> i
     return 1
 
 
-def _decision_payload(decision: AdaptiveGridDecision) -> tuple[tuple[EvidenceKind, dict[str, object]], ...]:
+def _decision_payload(
+    decision: AdaptiveGridDecision,
+) -> tuple[tuple[EvidenceKind, dict[str, object]], ...]:
     return (
         (
             EvidenceKind.CENTER_DECISION,
@@ -239,9 +241,7 @@ def _decision_payload(decision: AdaptiveGridDecision) -> tuple[tuple[EvidenceKin
 def _count_submissions(orders: tuple[PassiveOrderIntent, ...]) -> tuple[int, int, int]:
     reduce_only = sum(1 for order in orders if order.reduce_only)
     short_new_risk = sum(
-        1
-        for order in orders
-        if order.side is OrderSide.SELL and not order.reduce_only
+        1 for order in orders if order.side is OrderSide.SELL and not order.reduce_only
     )
     return len(orders), reduce_only, short_new_risk
 
@@ -541,7 +541,9 @@ def _controlled_fixture() -> tuple[tuple[MarketSnapshot, ...], tuple[AdaptiveSig
     )
     snapshots: list[MarketSnapshot] = []
     signals: list[AdaptiveSignals] = []
-    for index, (mid, volatility, position, trend, funding, imbalance, microprice) in enumerate(rows):
+    for index, (mid, volatility, position, trend, funding, imbalance, microprice) in enumerate(
+        rows
+    ):
         value = Decimal(mid)
         snapshots.append(
             MarketSnapshot(
