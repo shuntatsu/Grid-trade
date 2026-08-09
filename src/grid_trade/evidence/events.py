@@ -46,6 +46,11 @@ class EvidenceKind(StrEnum):
     RISK_DECISION = "risk_decision"
     CENTER_DECISION = "center_decision"
     SPACING_DECISION = "spacing_decision"
+    INVENTORY_DECISION = "inventory_decision"
+    DERISK_DECISION = "derisk_decision"
+    SHORT_DECISION = "short_decision"
+    FUNDING_DECISION = "funding_decision"
+    ORDER_BOOK_DECISION = "order_book_decision"
     RUN_SUMMARY = "run_summary"
 
 
