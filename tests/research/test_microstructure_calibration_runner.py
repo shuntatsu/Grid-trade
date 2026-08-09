@@ -7,6 +7,8 @@ from grid_trade.research.microstructure_calibration_runner import (
 
 pytestmark = pytest.mark.research
 
+_EXPECTED_DIGEST = "409269fc188c2a66514133f0a4ccbf03c412ab6ed761d9068f818e6a5e9fd2bf"
+
 
 def _run() -> MicrostructureCalibrationRunResult:
     return run_checked_in_microstructure_calibration()
@@ -18,7 +20,7 @@ def test_controlled_microstructure_runner_is_exactly_deterministic() -> None:
 
     assert left == right
     assert left.deterministic is True
-    assert len(left.evidence_digest) == 64
+    assert left.evidence_digest == _EXPECTED_DIGEST
     assert left.step_count == 2
     assert left.ready_step_count == 1
     assert left.final_ready is True
