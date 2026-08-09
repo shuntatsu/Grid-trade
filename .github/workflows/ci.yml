@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, grid-core]
+    branches: [main]
   pull_request:
-    branches: [main, grid-core]
+    branches: [main]
 
 permissions:
   contents: read
