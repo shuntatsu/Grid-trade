@@ -141,9 +141,10 @@ def decide_s2_grid(
         generation=candidate_generation,
         stage="s2",
     )
-    economic_ladder_changed = ladder_economic_signature(
-        candidate_ladder,
-    ) != ladder_economic_signature(current_ladder)
+    economic_ladder_changed = (
+        ladder_economic_signature(candidate_ladder)
+        != ladder_economic_signature(current_ladder)
+    )
 
     if economic_ladder_changed:
         candidate_state = S2GridState(
