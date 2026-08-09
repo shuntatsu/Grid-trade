@@ -189,20 +189,28 @@ def test_execution_cost_is_independent_of_ambient_decimal_precision() -> None:
             mark_price="123.456789",
         ),
     )
-    kwargs = dict(
-        decision_time=_time(3),
-        maker_fee_rate=Decimal("0.00015"),
-        tick_size=Decimal("0.001"),
-        current_mid=Decimal("123.43"),
-        config=_config(min_samples=2),
-    )
+    config = _config(min_samples=2)
 
     with localcontext() as context:
         context.prec = 10
-        low = estimate_execution_cost(markouts, **kwargs)
+        low = estimate_execution_cost(
+            markouts,
+            decision_time=_time(3),
+            maker_fee_rate=Decimal("0.00015"),
+            tick_size=Decimal("0.001"),
+            current_mid=Decimal("123.43"),
+            config=config,
+        )
     with localcontext() as context:
         context.prec = 50
-        high = estimate_execution_cost(markouts, **kwargs)
+        high = estimate_execution_cost(
+            markouts,
+            decision_time=_time(3),
+            maker_fee_rate=Decimal("0.00015"),
+            tick_size=Decimal("0.001"),
+            current_mid=Decimal("123.43"),
+            config=config,
+        )
 
     assert low == high
 
