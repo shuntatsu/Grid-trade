@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from grid_trade.domain.market import MarketSnapshot
@@ -45,12 +45,12 @@ def _limits() -> RiskLimits:
     )
 
 
-def _risk_state(*, open_orders: int = 0) -> RiskState:
+def _risk_state(*, open_orders: int = 0, now: datetime = _NOW) -> RiskState:
     return RiskState(
         equity=Decimal("100"),
         peak_equity=Decimal("100"),
         open_order_count=open_orders,
-        now=_NOW,
+        now=now,
     )
 
 
@@ -101,10 +101,11 @@ def test_projected_position_rejection_does_not_commit_proposed_center() -> None:
 
 def test_effective_reanchor_cancels_then_submits_same_decision_without_re_evaluation() -> None:
     state = DynamicCenterState(center=Decimal("100"), generation=0)
+    snapshot = _snapshot()
     working = _working_generation(state)
 
     first = transition_dynamic_center(
-        snapshot=_snapshot(),
+        snapshot=snapshot,
         state=state,
         center_config=DynamicCenterConfig(Decimal("1"), Decimal("50")),
         grid_config=_grid_config(),
@@ -117,7 +118,13 @@ def test_effective_reanchor_cancels_then_submits_same_decision_without_re_evalua
     assert first.reconciliation.cancel == tuple(sorted(order.client_order_id for order in working))
     assert first.reconciliation.submit == ()
 
-    second = continue_dynamic_center_reconciliation(first, working_orders=())
+    second = continue_dynamic_center_reconciliation(
+        first,
+        snapshot=snapshot,
+        risk_limits=_limits(),
+        risk_state=_risk_state(open_orders=0),
+        working_orders=(),
+    )
 
     assert second.decision == first.decision
     assert second.next_state == first.next_state
@@ -125,6 +132,36 @@ def test_effective_reanchor_cancels_then_submits_same_decision_without_re_evalua
     assert second.reconciliation.cancel == ()
     assert second.reconciliation.submit == first.desired_ladder
     assert all(order.generation == 1 for order in second.reconciliation.submit)
+
+
+def test_risk_is_rechecked_before_submit_without_recomputing_center() -> None:
+    state = DynamicCenterState(center=Decimal("100"), generation=0)
+    snapshot = _snapshot()
+    working = _working_generation(state)
+    first = transition_dynamic_center(
+        snapshot=snapshot,
+        state=state,
+        center_config=DynamicCenterConfig(Decimal("1"), Decimal("50")),
+        grid_config=_grid_config(),
+        risk_limits=_limits(),
+        risk_state=_risk_state(open_orders=len(working)),
+        working_orders=working,
+    )
+
+    second = continue_dynamic_center_reconciliation(
+        first,
+        snapshot=snapshot,
+        risk_limits=_limits(),
+        risk_state=_risk_state(open_orders=0, now=_NOW + timedelta(milliseconds=1_001)),
+        working_orders=(),
+    )
+
+    assert second.decision == first.decision
+    assert second.risk_decision.allow_new_risk is False
+    assert RiskReason.STALE_DATA in second.risk_decision.reasons
+    assert second.next_state == state
+    assert second.desired_ladder == ()
+    assert second.reconciliation.submit == ()
 
 
 def test_partial_fill_old_generation_never_submits_replacement_same_cycle() -> None:
