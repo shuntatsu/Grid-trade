@@ -6,6 +6,7 @@ from grid_trade.research.calibrated_adaptive_runner import (
 )
 
 pytestmark = pytest.mark.research
+_EXPECTED_DIGEST = "709481dcab22d0f611d89a5690f8fb28f3cc7f2a238f0c80e6a0e67d93606f63"
 
 
 def _run() -> CalibratedAdaptiveRunResult:
@@ -18,7 +19,7 @@ def test_calibrated_adaptive_runner_is_exactly_deterministic() -> None:
 
     assert left == right
     assert left.deterministic is True
-    assert len(left.evidence_digest) == 64
+    assert left.evidence_digest == _EXPECTED_DIGEST
     assert left.calibration_generation >= 4
     assert left.adaptive_generation >= 1
 
