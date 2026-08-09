@@ -69,7 +69,9 @@ def _config() -> UniversalCalibrationConfig:
     )
 
 
-def _observation(minute: int, *, instrument: str = "AAA-PERP", scale: str = "1") -> CalibrationObservation:
+def _observation(
+    minute: int, *, instrument: str = "AAA-PERP", scale: str = "1"
+) -> CalibrationObservation:
     price_scale = Decimal(scale)
     return CalibrationObservation(
         timestamp=_time(minute),
@@ -121,8 +123,12 @@ def _labels() -> tuple[OfiImpactSample, ...]:
 def _markouts(*, price_scale: str = "1") -> tuple[MaturedMarkout, ...]:
     p = Decimal(price_scale)
     return (
-        MaturedMarkout(_time(0), _time(2), MarkoutSide.BUY, Decimal("100") * p, Decimal("99.9") * p),
-        MaturedMarkout(_time(1), _time(3), MarkoutSide.SELL, Decimal("100") * p, Decimal("100.2") * p),
+        MaturedMarkout(
+            _time(0), _time(2), MarkoutSide.BUY, Decimal("100") * p, Decimal("99.9") * p
+        ),
+        MaturedMarkout(
+            _time(1), _time(3), MarkoutSide.SELL, Decimal("100") * p, Decimal("100.2") * p
+        ),
     )
 
 
@@ -192,8 +198,12 @@ def test_universal_engine_symbol_rename_changes_metadata_only() -> None:
     aaa = UniversalCalibrationState()
     bbb = UniversalCalibrationState()
     for minute, sizes in ((4, ("5", "5")), (5, ("8", "4")), (6, ("9", "3"))):
-        aaa_update = _update(aaa, minute, instrument="AAA-PERP", bid_size=sizes[0], ask_size=sizes[1])
-        bbb_update = _update(bbb, minute, instrument="BBB-PERP", bid_size=sizes[0], ask_size=sizes[1])
+        aaa_update = _update(
+            aaa, minute, instrument="AAA-PERP", bid_size=sizes[0], ask_size=sizes[1]
+        )
+        bbb_update = _update(
+            bbb, minute, instrument="BBB-PERP", bid_size=sizes[0], ask_size=sizes[1]
+        )
         aaa = aaa_update.next_state
         bbb = bbb_update.next_state
 
