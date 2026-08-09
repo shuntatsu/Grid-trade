@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -7,8 +7,8 @@ from grid_trade.application.dynamic_center import (
     transition_dynamic_center,
 )
 from grid_trade.domain.market import MarketSnapshot
-from grid_trade.domain.orders import PassiveOrderIntent, WorkingOrder
-from grid_trade.domain.risk import RiskLimits, RiskState
+from grid_trade.domain.orders import PassiveOrderIntent, ReconciliationPlan, WorkingOrder
+from grid_trade.domain.risk import RiskDecision, RiskLimits, RiskState
 from grid_trade.evidence.events import EvidenceEvent, EvidenceKind, PnLBreakdown
 from grid_trade.evidence.ledger import evidence_digest
 from grid_trade.strategy.dynamic_center import (
@@ -16,7 +16,7 @@ from grid_trade.strategy.dynamic_center import (
     DynamicCenterConfig,
     initialize_dynamic_center,
 )
-from grid_trade.strategy.grid_geometry import FixedLongGridConfig, build_long_grid_at_center
+from grid_trade.strategy.grid_geometry import FixedLongGridConfig
 
 _BASIS_POINTS = Decimal(10_000)
 _ZERO_PNL = PnLBreakdown(
@@ -40,6 +40,8 @@ class S1ComparisonResult:
     cancel_count: int
     submit_count: int
     queue_reset_count: int
+    risk_rejection_count: int
+    risk_reasons_seen: tuple[str, ...]
     ending_inventory: Decimal
     pnl: PnLBreakdown
     deterministic: bool
@@ -58,6 +60,12 @@ class S1ComparisonResult:
             raise ValueError("S1 counts must be non-negative")
         if self.cancel_count < 0 or self.submit_count < 0 or self.queue_reset_count < 0:
             raise ValueError("execution counts must be non-negative")
+        if self.risk_rejection_count < 0:
+            raise ValueError("risk_rejection_count must be non-negative")
+        if len(set(self.risk_reasons_seen)) != len(self.risk_reasons_seen):
+            raise ValueError("risk_reasons_seen must not contain duplicates")
+        if any(not reason.strip() for reason in self.risk_reasons_seen):
+            raise ValueError("risk reasons must be non-empty")
         if not self.ending_inventory.is_finite():
             raise ValueError("ending_inventory must be finite")
         if self.execution_scope != "policy_reconciliation_only":
@@ -122,7 +130,41 @@ def _center_payload(
     }
 
 
-def run_s1_comparison(
+def _risk_payload(decision: RiskDecision, *, phase: str) -> dict[str, object]:
+    return {
+        "phase": phase,
+        "allow_new_risk": decision.allow_new_risk,
+        "cancel_all_passive": decision.cancel_all_passive,
+        "target_flat": decision.target_flat,
+        "reasons": tuple(reason.value for reason in decision.reasons),
+    }
+
+
+def _reconciliation_payload(
+    reconciliation: ReconciliationPlan,
+    *,
+    phase: str,
+) -> dict[str, object]:
+    return {
+        "phase": phase,
+        "cancel": reconciliation.cancel,
+        "submit": tuple(order.client_order_id for order in reconciliation.submit),
+    }
+
+
+def _record_risk_rejection(
+    decision: RiskDecision,
+    reasons_seen: list[str],
+) -> int:
+    if decision.allow_new_risk:
+        return 0
+    for reason in decision.reasons:
+        if reason.value not in reasons_seen:
+            reasons_seen.append(reason.value)
+    return 1
+
+
+def _run_s1_once(
     *,
     run_id: str,
     snapshots: tuple[MarketSnapshot, ...],
@@ -137,13 +179,6 @@ def run_s1_comparison(
     initial_snapshot = snapshots[0]
     s0_center = initial_snapshot.mid
     state = initialize_dynamic_center(initial_snapshot)
-    initial_ladder = build_long_grid_at_center(
-        state.center,
-        grid_config,
-        generation=state.generation,
-        stage="s1",
-    )
-    working = _working_orders(initial_ladder)
 
     s0_centers: list[Decimal] = [s0_center]
     s1_centers: list[Decimal] = [state.center]
@@ -151,8 +186,10 @@ def run_s1_comparison(
     s1_errors: list[Decimal] = [_center_error_bps(state.center, initial_snapshot.mid)]
     reanchor_count = 0
     cancel_count = 0
-    submit_count = len(initial_ladder)
+    submit_count = 0
     queue_reset_count = 0
+    risk_rejection_count = 0
+    risk_reasons_seen: list[str] = []
     events: list[EvidenceEvent] = []
 
     def append_event(
@@ -199,6 +236,38 @@ def run_s1_comparison(
         },
     )
 
+    initial_transition = transition_dynamic_center(
+        snapshot=initial_snapshot,
+        state=state,
+        center_config=center_config,
+        grid_config=grid_config,
+        risk_limits=risk_limits,
+        risk_state=RiskState(
+            equity=Decimal("100"),
+            peak_equity=Decimal("100"),
+            open_order_count=0,
+            now=initial_snapshot.timestamp,
+        ),
+        working_orders=(),
+    )
+    append_event(
+        timestamp=initial_snapshot.timestamp,
+        kind=EvidenceKind.RISK_DECISION,
+        payload=_risk_payload(initial_transition.risk_decision, phase="initial"),
+    )
+    append_event(
+        timestamp=initial_snapshot.timestamp,
+        kind=EvidenceKind.RECONCILIATION_PLAN,
+        payload=_reconciliation_payload(initial_transition.reconciliation, phase="initial"),
+    )
+    risk_rejection_count += _record_risk_rejection(
+        initial_transition.risk_decision,
+        risk_reasons_seen,
+    )
+    submit_count += len(initial_transition.reconciliation.submit)
+    working = _working_orders(initial_transition.reconciliation.submit)
+    state = initial_transition.next_state
+
     for snapshot in snapshots[1:]:
         append_event(
             timestamp=snapshot.timestamp,
@@ -209,19 +278,18 @@ def run_s1_comparison(
                 "position_quantity": snapshot.position_quantity,
             },
         )
-        risk_state = RiskState(
-            equity=Decimal("100"),
-            peak_equity=Decimal("100"),
-            open_order_count=len(working),
-            now=snapshot.timestamp,
-        )
         transition = transition_dynamic_center(
             snapshot=snapshot,
             state=state,
             center_config=center_config,
             grid_config=grid_config,
             risk_limits=risk_limits,
-            risk_state=risk_state,
+            risk_state=RiskState(
+                equity=Decimal("100"),
+                peak_equity=Decimal("100"),
+                open_order_count=len(working),
+                now=snapshot.timestamp,
+            ),
             working_orders=working,
         )
         append_event(
@@ -229,27 +297,61 @@ def run_s1_comparison(
             kind=EvidenceKind.CENTER_DECISION,
             payload=_center_payload(transition.decision, center_config),
         )
+        append_event(
+            timestamp=snapshot.timestamp,
+            kind=EvidenceKind.RISK_DECISION,
+            payload=_risk_payload(transition.risk_decision, phase="decision"),
+        )
+        append_event(
+            timestamp=snapshot.timestamp,
+            kind=EvidenceKind.RECONCILIATION_PLAN,
+            payload=_reconciliation_payload(transition.reconciliation, phase="decision"),
+        )
+        risk_rejection_count += _record_risk_rejection(
+            transition.risk_decision,
+            risk_reasons_seen,
+        )
 
         previous_generation = state.generation
-        if transition.reconciliation.cancel:
+        had_cancel = bool(transition.reconciliation.cancel)
+        if had_cancel:
             cancel_count += len(transition.reconciliation.cancel)
-            if transition.decision.reanchored:
-                queue_reset_count += 1
-            continued = continue_dynamic_center_reconciliation(
-                transition,
-                snapshot=snapshot,
-                risk_limits=risk_limits,
-                risk_state=RiskState(
-                    equity=Decimal("100"),
-                    peak_equity=Decimal("100"),
-                    open_order_count=0,
-                    now=snapshot.timestamp,
-                ),
-                working_orders=(),
-            )
-            submit_count += len(continued.reconciliation.submit)
-            working = _working_orders(continued.reconciliation.submit)
-            state = continued.next_state
+            if transition.risk_decision.allow_new_risk and transition.desired_ladder:
+                continued = continue_dynamic_center_reconciliation(
+                    transition,
+                    snapshot=snapshot,
+                    risk_limits=risk_limits,
+                    risk_state=RiskState(
+                        equity=Decimal("100"),
+                        peak_equity=Decimal("100"),
+                        open_order_count=0,
+                        now=snapshot.timestamp,
+                    ),
+                    working_orders=(),
+                )
+                append_event(
+                    timestamp=snapshot.timestamp,
+                    kind=EvidenceKind.RISK_DECISION,
+                    payload=_risk_payload(continued.risk_decision, phase="post_cancel"),
+                )
+                append_event(
+                    timestamp=snapshot.timestamp,
+                    kind=EvidenceKind.RECONCILIATION_PLAN,
+                    payload=_reconciliation_payload(
+                        continued.reconciliation,
+                        phase="post_cancel",
+                    ),
+                )
+                risk_rejection_count += _record_risk_rejection(
+                    continued.risk_decision,
+                    risk_reasons_seen,
+                )
+                submit_count += len(continued.reconciliation.submit)
+                working = _working_orders(continued.reconciliation.submit)
+                state = continued.next_state
+            else:
+                working = ()
+                state = transition.next_state
         else:
             submit_count += len(transition.reconciliation.submit)
             if transition.reconciliation.submit:
@@ -258,6 +360,8 @@ def run_s1_comparison(
 
         if state.generation > previous_generation:
             reanchor_count += 1
+            if had_cancel:
+                queue_reset_count += 1
 
         s0_centers.append(s0_center)
         s1_centers.append(state.center)
@@ -275,6 +379,8 @@ def run_s1_comparison(
             "cancel_count": cancel_count,
             "submit_count": submit_count,
             "queue_reset_count": queue_reset_count,
+            "risk_rejection_count": risk_rejection_count,
+            "risk_reasons_seen": tuple(risk_reasons_seen),
             "ending_inventory": snapshots[-1].position_quantity,
             "execution_scope": "policy_reconciliation_only",
             "production_authorized": False,
@@ -294,11 +400,38 @@ def run_s1_comparison(
         cancel_count=cancel_count,
         submit_count=submit_count,
         queue_reset_count=queue_reset_count,
+        risk_rejection_count=risk_rejection_count,
+        risk_reasons_seen=tuple(risk_reasons_seen),
         ending_inventory=snapshots[-1].position_quantity,
         pnl=_ZERO_PNL,
-        deterministic=True,
+        deterministic=False,
         execution_scope="policy_reconciliation_only",
     )
+
+
+def run_s1_comparison(
+    *,
+    run_id: str,
+    snapshots: tuple[MarketSnapshot, ...],
+    grid_config: FixedLongGridConfig,
+    center_config: DynamicCenterConfig,
+    risk_limits: RiskLimits,
+) -> S1ComparisonResult:
+    first = _run_s1_once(
+        run_id=run_id,
+        snapshots=snapshots,
+        grid_config=grid_config,
+        center_config=center_config,
+        risk_limits=risk_limits,
+    )
+    second = _run_s1_once(
+        run_id=run_id,
+        snapshots=snapshots,
+        grid_config=grid_config,
+        center_config=center_config,
+        risk_limits=risk_limits,
+    )
+    return replace(first, deterministic=first == second)
 
 
 def run_checked_in_comparison() -> S1ComparisonResult:
