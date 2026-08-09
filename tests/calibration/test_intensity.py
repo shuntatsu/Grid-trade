@@ -46,10 +46,7 @@ def test_zero_arrival_tail_remains_informative() -> None:
     base = _synthetic_buckets()
     without_tail = estimate_arrival_intensity(base, _config())
     with_tail = estimate_arrival_intensity(
-        base
-        + (
-            IntensityBucket(Decimal("4"), Decimal("500"), 0),
-        ),
+        base + (IntensityBucket(Decimal("4"), Decimal("500"), 0),),
         _config(),
     )
 
@@ -71,10 +68,7 @@ def test_insufficient_evidence_is_not_ready() -> None:
 
 
 def test_fit_must_beat_constant_intensity_null() -> None:
-    flat = tuple(
-        IntensityBucket(Decimal(index), Decimal("100"), 100)
-        for index in range(4)
-    )
+    flat = tuple(IntensityBucket(Decimal(index), Decimal("100"), 100) for index in range(4))
     estimate = estimate_arrival_intensity(flat, _config())
 
     assert estimate.ready is False
