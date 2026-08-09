@@ -116,6 +116,7 @@ jobs:
           src/grid_trade/integrations/hyperliquid
           src/grid_trade/research/hftbacktest_adapter.py
           src/grid_trade/research/replay_attribution.py
+          src/grid_trade/research/tier2_calibrated_candidate.py
           src/grid_trade/research/tier2_replay.py
           src/grid_trade/research/tier2_fixture_runner.py
           tests/datasets
@@ -124,6 +125,7 @@ jobs:
           tests/research/test_hftbacktest_pinned_limitations.py
           tests/research/test_replay_attribution.py
           tests/research/test_replay_visibility_attribution.py
+          tests/research/test_tier2_calibrated_candidate.py
           tests/research/test_tier2_causality.py
           tests/research/test_tier2_replay.py
           tests/research/test_tier2_replay_determinism.py
