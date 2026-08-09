@@ -2,22 +2,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 from itertools import pairwise
 
+from grid_trade.calibration._robust import mad_decimal, median_decimal
 from grid_trade.calibration.contracts import CalibrationObservation
 
 
 def _require_finite_positive(value: Decimal, *, field: str) -> None:
     if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
         raise ValueError(f"{field} must be a finite positive Decimal")
-
-
-def _median(values: tuple[Decimal, ...]) -> Decimal:
-    if not values:
-        raise ValueError("median requires at least one value")
-    ordered = tuple(sorted(values))
-    midpoint = len(ordered) // 2
-    if len(ordered) % 2:
-        return ordered[midpoint]
-    return (ordered[midpoint - 1] + ordered[midpoint]) / Decimal(2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +62,8 @@ def update_robust_volatility(
     if sample_count < config.min_samples:
         return next_state, VolatilityEstimate(scale=None, sample_count=sample_count, ready=False)
 
-    center = _median(returns)
-    deviations = tuple(abs(value - center) for value in returns)
-    mad = _median(deviations)
+    center = median_decimal(returns)
+    mad = mad_decimal(returns, center=center)
     scale = config.mad_scale * mad
     return next_state, VolatilityEstimate(scale=scale, sample_count=sample_count, ready=True)
 
