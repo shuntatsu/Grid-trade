@@ -226,6 +226,20 @@ def _submit_order(
         raise RuntimeError(f"hftbacktest failed to submit order {intent.client_order_id}: {result}")
 
 
+def _ending_position_from_fills(
+    fills: tuple[ReplayFill, ...],
+    side_by_client_id: dict[str, OrderSide],
+) -> Decimal:
+    position = Decimal(0)
+    for fill in fills:
+        side = side_by_client_id[fill.client_order_id]
+        if side is OrderSide.BUY:
+            position += fill.quantity
+        else:
+            position -= fill.quantity
+    return position
+
+
 def replay_passive_orders(
     fixture: MicrostructureFixture,
     intents: tuple[PassiveOrderIntent, ...],
@@ -254,6 +268,7 @@ def replay_passive_orders(
     )
     backtest = hft.HashMapMarketDepthBacktest([asset])
     numeric_to_client: dict[int, str] = {}
+    side_by_client_id = {intent.client_order_id: intent.side for intent in intents}
     seen_execution: dict[int, tuple[int, Decimal, Decimal]] = {}
     fills: list[ReplayFill] = []
 
@@ -321,9 +336,10 @@ def replay_passive_orders(
             }:
                 open_order_count += 1
 
+        fill_tuple = tuple(fills)
         return ReplaySummary(
-            fills=tuple(fills),
-            ending_position=Decimal(str(backtest.position(0))),
+            fills=fill_tuple,
+            ending_position=_ending_position_from_fills(fill_tuple, side_by_client_id),
             open_order_count=open_order_count,
         )
     finally:
