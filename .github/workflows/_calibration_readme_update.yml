@@ -1,0 +1,56 @@
+name: Calibration README Update
+
+on:
+  push:
+    branches:
+      - universal-calibration-final
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: universal-calibration-final
+      - name: Insert universal calibration foundation section
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('README.md')
+          text = path.read_text()
+          marker = '## What S0–S7 mechanics do not establish\n'
+          section = '''## Universal causal market calibration foundation
+
+The absolute values used by the checked-in S0–S7 controlled runners are deterministic **mechanics fixtures**, not universal market parameters. Strategy research must not infer that a fixed `40 bps` floor, a fixed coin quantity, a fixed funding divisor, or a symbol-specific threshold is appropriate for a live/historical instrument.
+
+The new `grid_trade.calibration` boundary provides an instrument-agnostic causal foundation:
+
+- robust rolling log-return volatility in relative-price units;
+- dimensionless trend normalization using the instrument's own volatility scale;
+- rolling robust funding normalization with explicit unavailable/degenerate states instead of a fixed global funding scale;
+- strict timestamp and source/instrument continuity in the calibration engine;
+- explicit readiness for every calibration component;
+- metamorphic tests proving that changing only the symbol identity cannot change numeric calibration output;
+- price-scale tests proving that multiplying all prices by a constant does not change normalized volatility/trend output.
+
+Account/risk capacity remains outside Calibration. `grid_trade.risk.sizing` derives `Q_max` from the most conservative of notional, margin, volatility-risk, and venue quantity caps. Calibration cannot increase Hard Risk limits, and Strategy may only consume a fraction of the capacity supplied to it.
+
+This foundation intentionally does **not** fabricate microstructure state. GLFT-style arrival intensity (`A`, `k`), execution/adverse-selection cost, OFI/depth impact, and microprice calibration still require causal Tier-2 trade/L2/fill data and are the next research phase. Until those components and calibrated S2–S7 integration pass realistic replay and sealed OOS gates, production remains NO-GO.
+
+'''
+          if section in text:
+              raise SystemExit('README section already exists')
+          if marker not in text:
+              raise SystemExit('README insertion marker not found')
+          path.write_text(text.replace(marker, section + marker, 1))
+          Path('.github/workflows/_calibration_readme_update.yml').unlink()
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "docs: describe universal calibration foundation"
+          git push origin HEAD:universal-calibration-final
