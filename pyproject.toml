@@ -1,0 +1,37 @@
+[project]
+name = "grid-trade"
+version = "0.1.0"
+description = "Research-first adaptive grid and market-making system"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.optional-dependencies]
+research = [
+  "hftbacktest==2.4.4",
+  "nautilus_trader==1.230.0",
+]
+dev = [
+  "hypothesis==6.165.2",
+  "mypy==2.3.0",
+  "pytest==9.1.1",
+  "ruff==0.15.22",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src", "tests"]
