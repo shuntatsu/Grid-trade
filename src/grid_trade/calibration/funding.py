@@ -59,7 +59,9 @@ class FundingEstimate:
             raise ValueError("scale must be non-negative")
         if self.score is not None and not -_ONE <= self.score <= _ONE:
             raise ValueError("score must be within [-1, 1]")
-        available = all(value is not None for value in (self.center, self.scale, self.z_score, self.score))
+        available = all(
+            value is not None for value in (self.center, self.scale, self.z_score, self.score)
+        )
         if self.ready != available:
             raise ValueError("ready must reflect normalized funding availability")
         if self.degenerate and self.ready:
