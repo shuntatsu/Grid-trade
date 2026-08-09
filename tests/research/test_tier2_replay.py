@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from grid_trade.datasets.audit import audit_canonical_dataset, audit_report_digest
 from grid_trade.datasets.canonical import (
     CanonicalBookLevel,
     CanonicalBookSnapshot,
@@ -55,22 +56,33 @@ def _raw_ref(dataset_type: DatasetType, digest: str) -> RawObjectRef:
     )
 
 
+def _raw_objects() -> tuple[RawObjectRef, ...]:
+    return (
+        _raw_ref(DatasetType.L2_BOOK, _BOOK_HASH),
+        _raw_ref(DatasetType.TRADES, _TRADE_HASH),
+        _raw_ref(DatasetType.FUNDING_REFERENCE, _FUNDING_HASH),
+    )
+
+
 def _dataset_manifest(
+    events: tuple[CanonicalEventEnvelope, ...],
     acceptance: DatasetAcceptance = DatasetAcceptance.ACCEPTED,
 ) -> DatasetManifest:
+    raw_objects = _raw_objects()
+    report = audit_canonical_dataset(
+        events,
+        raw_objects=raw_objects,
+        expected_normalization_schema_version="canonical-v1",
+    )
     return DatasetManifest(
         instrument="BTC",
-        raw_objects=(
-            _raw_ref(DatasetType.L2_BOOK, _BOOK_HASH),
-            _raw_ref(DatasetType.TRADES, _TRADE_HASH),
-            _raw_ref(DatasetType.FUNDING_REFERENCE, _FUNDING_HASH),
-        ),
+        raw_objects=raw_objects,
         normalization_schema_version="canonical-v1",
         ordering_schema_version="ordering-v1",
         audit_schema_version="audit-v1",
         acceptance=acceptance,
         created_at=datetime(2026, 8, 10, tzinfo=UTC),
-        audit_digest="d" * 64,
+        audit_digest=audit_report_digest(report),
     )
 
 
@@ -161,9 +173,12 @@ def _candidate(*, price: str = "99.0", quantity: str = "0.01") -> PassiveOrderIn
 
 def _replay_manifest(
     acceptance: DatasetAcceptance = DatasetAcceptance.ACCEPTED,
+    *,
+    events: tuple[CanonicalEventEnvelope, ...] | None = None,
 ) -> Tier2ReplayManifest:
+    audited_events = _events() if events is None else events
     return Tier2ReplayManifest(
-        dataset=_dataset_manifest(acceptance),
+        dataset=_dataset_manifest(audited_events, acceptance),
         strategy_identity="universal-calibrated-adaptive:S7:v1",
         calibration_identity="universal-calibration:v1",
         hft=HftReplayConfig(
@@ -281,7 +296,7 @@ def test_incomplete_exact_hour_funding_fails_closed() -> None:
 
     with pytest.raises(ValueError, match="funding_rate"):
         run_tier2_replay(
-            manifest=_replay_manifest(),
+            manifest=_replay_manifest(events=events),
             events=events,
             candidate_orders=(_candidate(),),
             risk_limits=_risk_limits(),
@@ -295,7 +310,7 @@ def test_non_hour_reference_observation_is_not_applied_as_funding() -> None:
     events = (*_events(include_funding=False), _funding(_HOUR_NS + 1))
 
     result = run_tier2_replay(
-        manifest=_replay_manifest(),
+        manifest=_replay_manifest(events=events),
         events=events,
         candidate_orders=(_candidate(),),
         risk_limits=_risk_limits(),
