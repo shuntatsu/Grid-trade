@@ -4,6 +4,7 @@ from itertools import pairwise
 
 from grid_trade.calibration._robust import mad_decimal, median_decimal
 from grid_trade.calibration.contracts import CalibrationObservation
+from grid_trade.domain.numeric import deterministic_decimal_context
 
 
 def _require_finite_positive(value: Decimal, *, field: str) -> None:
@@ -57,14 +58,16 @@ def update_robust_volatility(
     prices = (*state.prices, observation.mid)[-(config.window + 1) :]
     next_state = RobustVolatilityState(prices=prices)
 
-    returns = tuple((current / previous).ln() for previous, current in pairwise(prices))
+    with deterministic_decimal_context():
+        returns = tuple((current / previous).ln() for previous, current in pairwise(prices))
     sample_count = len(returns)
     if sample_count < config.min_samples:
         return next_state, VolatilityEstimate(scale=None, sample_count=sample_count, ready=False)
 
     center = median_decimal(returns)
     mad = mad_decimal(returns, center=center)
-    scale = config.mad_scale * mad
+    with deterministic_decimal_context():
+        scale = config.mad_scale * mad
     return next_state, VolatilityEstimate(scale=scale, sample_count=sample_count, ready=True)
 
 
