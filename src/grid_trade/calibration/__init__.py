@@ -4,6 +4,12 @@ from grid_trade.calibration.contracts import (
     CalibrationObservation,
     CalibrationReadiness,
 )
+from grid_trade.calibration.engine import (
+    CalibrationEngineConfig,
+    CalibrationEngineState,
+    CalibrationUpdate,
+    update_calibration_engine,
+)
 from grid_trade.calibration.funding import (
     FundingCalibrationConfig,
     FundingCalibrationState,
@@ -25,8 +31,11 @@ from grid_trade.calibration.volatility import (
 __all__ = [
     "CalibratedMarketState",
     "CalibrationComponentStatus",
+    "CalibrationEngineConfig",
+    "CalibrationEngineState",
     "CalibrationObservation",
     "CalibrationReadiness",
+    "CalibrationUpdate",
     "FundingCalibrationConfig",
     "FundingCalibrationState",
     "FundingEstimate",
@@ -36,6 +45,7 @@ __all__ = [
     "TrendEstimate",
     "VolatilityEstimate",
     "estimate_normalized_trend",
+    "update_calibration_engine",
     "update_funding_calibration",
     "update_robust_volatility",
 ]
