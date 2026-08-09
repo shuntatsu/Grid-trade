@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, grid-core, adaptive-grid-completion]
+    branches: [main, grid-core]
   pull_request:
     branches: [main, grid-core]
 
