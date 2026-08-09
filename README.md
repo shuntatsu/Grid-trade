@@ -31,7 +31,7 @@ Every stage must demonstrate incremental value in walk-forward out-of-sample eva
 
 ## Milestone 1 — deterministic S0 foundation
 
-The `grid-core` implementation branch now contains the first research foundation:
+The `grid-core` implementation branch contains the first research foundation:
 
 - immutable causal market and passive-order contracts;
 - deterministic S0 fixed-long grid geometry;
@@ -43,16 +43,38 @@ The `grid-core` implementation branch now contains the first research foundation
 - a pinned `nautilus_trader==1.230.0` construct-only mapper for GTC post-only limit orders;
 - a deterministic S0 runner which performs duplicate replay and refuses to claim production authorization or alpha validation.
 
-The checked-in synthetic S0 fixture is execution-mechanics evidence only. It validates deterministic order generation, queue-sensitive partial fills, risk gating, evidence closure, and runtime integration. It **does not** establish:
+The checked-in synthetic S0 fixture is execution-mechanics evidence only. It validates deterministic order generation, queue-sensitive partial fills, risk gating, evidence closure, and runtime integration.
+
+## S1 — pure Dynamic Center mechanics
+
+The `s1-dynamic-center` branch adds one isolated strategy change: a stateful center that re-anchors only after a configurable mid-price deviation threshold is reached, with a configurable maximum movement per decision.
+
+S1 deliberately does **not** add trend prediction, volatility-adaptive spacing, inventory targeting/skew, short exposure, funding bias, order-book imbalance, microprice, adaptive sizing, or RL. Those remain separate later ablations.
+
+Important S1 mechanics:
+
+- the S0 comparison arm keeps the episode-initial center fixed;
+- S1 uses only current causal mid plus previous effective center state;
+- tick-rounded ladders are compared economically before a center change is committed;
+- a numerical center change which produces the same executable prices does not increment generation or reset queue priority;
+- effective re-anchors reuse the existing cancel-before-replace reconciler;
+- the same center decision is retained across cancel and later submission phases instead of being recomputed;
+- hard risk is rechecked before replacement submission, and a failed risk check rolls back the uncommitted center/generation;
+- projected full-ladder position risk is owned by the shared Risk layer, not reimplemented by S0 or S1;
+- an Application layer coordinates Strategy, Risk, and Execution so the Strategy layer remains pure.
+
+The checked-in S1 comparison runner is explicitly `policy_reconciliation_only`. It measures center drift, generations, cancels, submissions, and queue-reset mechanics with deterministic Evidence. It does not infer fills or claim economic profitability from the controlled center path.
+
+S1 is therefore still **NO-GO for strategy promotion**. Historical Tier-2 continuous L2 replay, realistic dynamic order lifecycles, and sealed walk-forward/OOS evidence are required before any claim that Dynamic Center improves Hyperliquid profitability or risk-adjusted returns.
+
+Neither S0 nor S1 currently establishes:
 
 - historical Hyperliquid profitability;
-- an adaptive-grid edge;
+- a proven adaptive-grid edge;
 - value from the conditional short overlay;
-- realistic historical queue position for Hyperliquid;
+- realistic historical Hyperliquid queue position across dynamic re-anchors;
 - production readiness or live-capital safety;
 - permission to trade real funds.
-
-Historical strategy promotion requires later Tier-2 market-data replay and walk-forward out-of-sample evidence under frozen assumptions.
 
 ## Execution and research architecture
 
@@ -63,7 +85,17 @@ Planned OSS reuse:
 - **Hyperliquid official Python SDK** — independent conformance/diagnostic oracle where useful.
 - **Hummingbot** — reference implementation source for established market-making ideas such as Avellaneda–Stoikov; not intended as the authoritative runtime.
 
-Project-specific code should focus on strategy logic, target inventory, grid generation, risk control, evidence, and PnL attribution instead of reimplementing exchange connectivity.
+Core dependency direction is intentionally constrained:
+
+- `domain/` contains immutable contracts and does not depend on higher layers;
+- `strategy/` contains pure grid/center policy and does not call Risk or Execution;
+- `risk/` owns hard veto logic;
+- `execution/` owns runtime-neutral order reconciliation;
+- `application/` coordinates Strategy, Risk, and Execution;
+- `research/` runs controlled experiments and evidence workflows;
+- `integrations/` contains external-runtime mappings.
+
+Architecture tests prevent optional hftbacktest/Nautilus dependencies from leaking into core layers.
 
 ## Research principles
 
@@ -83,7 +115,7 @@ No strategy result alone authorizes live trading. Production requires separate e
 
 ## Design
 
-The initial design specification is maintained under `docs/superpowers/specs/`. The Milestone 1 implementation plan is maintained under `docs/superpowers/plans/`.
+Design specifications are maintained under `docs/superpowers/specs/`. Implementation plans are maintained under `docs/superpowers/plans/`.
 
 ## License
 
