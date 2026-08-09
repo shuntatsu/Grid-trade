@@ -3,6 +3,7 @@ from dataclasses import replace
 from decimal import Decimal
 
 from grid_trade.application.calibrated_adaptive import (
+    CalibratedAdaptiveInputs,
     CalibratedAdaptiveMetaConfig,
     VenueGridConstraints,
     initialize_calibrated_adaptive_grid,
@@ -24,13 +25,20 @@ from grid_trade.calibration.microstructure_contracts import (
 )
 from grid_trade.calibration.microstructure_engine import (
     MicrostructureCalibrationConfig,
+    MicrostructureCalibrationEstimate,
     MicrostructureCalibrationState,
+    MicrostructureCalibrationUpdate,
     update_microstructure_engine,
 )
 from grid_trade.calibration.order_flow import OfiImpactConfig
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.risk import RiskLimits, RiskState
-from grid_trade.risk.sizing import RiskSizingConfig, RiskSizingInput, derive_inventory_capacity
+from grid_trade.risk.sizing import (
+    InventoryCapacity,
+    RiskSizingConfig,
+    RiskSizingInput,
+    derive_inventory_capacity,
+)
 from grid_trade.strategy.adaptive_grid import AdaptiveStage
 
 
@@ -38,8 +46,17 @@ def _time(minute: int) -> dt.datetime:
     return dt.datetime(2026, 8, 10, 3, minute, tzinfo=dt.UTC)
 
 
-def _status(ready: bool, *, count: int = 20, reason: str = "ready") -> CalibrationComponentStatus:
-    return CalibrationComponentStatus(ready=ready, sample_count=count if ready else 0, reason=reason)
+def _status(
+    ready: bool,
+    *,
+    count: int = 20,
+    reason: str = "ready",
+) -> CalibrationComponentStatus:
+    return CalibrationComponentStatus(
+        ready=ready,
+        sample_count=count if ready else 0,
+        reason=reason,
+    )
 
 
 def _market(*, minute: int = 11, trend: str = "-0.2") -> CalibratedMarketState:
@@ -104,7 +121,7 @@ def _venue() -> VenueGridConstraints:
     return VenueGridConstraints(Decimal("0.01"), Decimal("0.01"))
 
 
-def _capacity(equity: str):
+def _capacity(equity: str) -> InventoryCapacity:
     value = Decimal(equity)
     return derive_inventory_capacity(
         RiskSizingInput(
@@ -122,7 +139,12 @@ def _capacity(equity: str):
     )
 
 
-def _prepare(*, market: CalibratedMarketState, snapshot: MarketSnapshot, equity: str = "100"):
+def _prepare(
+    *,
+    market: CalibratedMarketState,
+    snapshot: MarketSnapshot,
+    equity: str = "100",
+) -> CalibratedAdaptiveInputs:
     result = prepare_calibrated_adaptive_inputs(
         snapshot=snapshot,
         calibrated=market,
@@ -147,13 +169,20 @@ def test_risk_capacity_not_symbol_identity_scales_grid_quantities() -> None:
 def _micro_config() -> MicrostructureCalibrationConfig:
     return MicrostructureCalibrationConfig(
         intensity=IntensityCalibrationConfig(
-            3, 20, Decimal("0.5"), Decimal("1.5"), 21, Decimal("0.1")
+            3,
+            20,
+            Decimal("0.5"),
+            Decimal("1.5"),
+            21,
+            Decimal("0.1"),
         ),
-        ofi_impact=OfiImpactConfig(
-            8, 2, Decimal("0.01"), Decimal("0.01"), Decimal("2")
-        ),
+        ofi_impact=OfiImpactConfig(8, 2, Decimal("0.01"), Decimal("0.01"), Decimal("2")),
         execution_cost=ExecutionCostConfig(
-            8, 2, Decimal("0.75"), Decimal("0.0002"), Decimal("0.003")
+            8,
+            2,
+            Decimal("0.75"),
+            Decimal("0.0002"),
+            Decimal("0.003"),
         ),
         min_microstructure_quality=Decimal("0"),
     )
@@ -161,7 +190,13 @@ def _micro_config() -> MicrostructureCalibrationConfig:
 
 def _book(minute: int, bid_size: str, ask_size: str) -> TopOfBookObservation:
     return TopOfBookObservation(
-        _time(minute), "fixture", "GENERIC-PERP", Decimal("99"), Decimal(bid_size), Decimal("101"), Decimal(ask_size)
+        _time(minute),
+        "fixture",
+        "GENERIC-PERP",
+        Decimal("99"),
+        Decimal(bid_size),
+        Decimal("101"),
+        Decimal(ask_size),
     )
 
 
@@ -174,8 +209,20 @@ def _buckets() -> tuple[IntensityBucket, ...]:
 
 def _markouts() -> tuple[MaturedMarkout, ...]:
     return (
-        MaturedMarkout(_time(0), _time(2), MarkoutSide.BUY, Decimal("100"), Decimal("99.9")),
-        MaturedMarkout(_time(1), _time(3), MarkoutSide.SELL, Decimal("100"), Decimal("100.2")),
+        MaturedMarkout(
+            _time(0),
+            _time(2),
+            MarkoutSide.BUY,
+            Decimal("100"),
+            Decimal("99.9"),
+        ),
+        MaturedMarkout(
+            _time(1),
+            _time(3),
+            MarkoutSide.SELL,
+            Decimal("100"),
+            Decimal("100.2"),
+        ),
     )
 
 
@@ -186,10 +233,13 @@ def _labels() -> tuple[OfiImpactSample, ...]:
     )
 
 
-def _micro_ready(*, future_label: bool):
+def _micro_ready(*, future_label: bool) -> MicrostructureCalibrationUpdate:
     labels = _labels()
     if future_label:
-        labels = (*labels, OfiImpactSample(_time(9), _time(20), Decimal("100"), Decimal("0.5")))
+        labels = (
+            *labels,
+            OfiImpactSample(_time(9), _time(20), Decimal("100"), Decimal("0.5")),
+        )
     first = update_microstructure_engine(
         MicrostructureCalibrationState(),
         _book(10, "5", "5"),
@@ -214,27 +264,28 @@ def _micro_ready(*, future_label: bool):
     )
 
 
+def _compose(estimate: MicrostructureCalibrationEstimate) -> CalibratedMarketState:
+    return replace(
+        _market(),
+        quote_distance_scale=estimate.quote_distance_scale,
+        execution_cost_floor=estimate.execution.execution_cost_floor,
+        order_book_score=estimate.order_book_score,
+        estimated_microprice_displacement=estimate.microprice_relative_displacement,
+        microstructure_status=_status(
+            estimate.readiness.ready,
+            count=estimate.readiness.sample_count,
+            reason=estimate.readiness.reason,
+        ),
+    )
+
+
 def test_unmatured_ofi_label_cannot_change_integrated_preparation() -> None:
     baseline = _micro_ready(future_label=False).estimate
     future = _micro_ready(future_label=True).estimate
     assert future == baseline
-
-    def composed(estimate):
-        return replace(
-            _market(),
-            quote_distance_scale=estimate.quote_distance_scale,
-            execution_cost_floor=estimate.execution.execution_cost_floor,
-            order_book_score=estimate.order_book_score,
-            estimated_microprice_displacement=estimate.microprice_relative_displacement,
-            microstructure_status=_status(
-                estimate.readiness.ready,
-                count=estimate.readiness.sample_count,
-                reason=estimate.readiness.reason,
-            ),
-        )
-
-    assert _prepare(market=composed(future), snapshot=_snapshot()) == _prepare(
-        market=composed(baseline), snapshot=_snapshot()
+    assert _prepare(market=_compose(future), snapshot=_snapshot()) == _prepare(
+        market=_compose(baseline),
+        snapshot=_snapshot(),
     )
 
 
