@@ -10,147 +10,122 @@ Production status: RESEARCH / NO-GO
 
 ## 1. Purpose
 
-Build the data and replay foundation required to evaluate the calibrated adaptive Grid strategy against realistic Hyperliquid microstructure instead of deterministic mechanics fixtures.
+Build the evidence-first data and replay foundation required to evaluate the calibrated adaptive Grid strategy against realistic Hyperliquid microstructure rather than deterministic mechanics fixtures.
 
-The maintained approach is a hybrid:
+The maintained approach is **Historical + Forward Recorder hybrid**:
 
-1. seed historical research from Hyperliquid official historical archives and node datasets;
-2. continuously record forward Hyperliquid WebSocket market data and periodic reference state into an immutable raw store;
-3. normalize both sources into one canonical, causally ordered event contract;
-4. audit gaps, duplicates, ordering, source identity, and provenance before replay;
-5. convert accepted datasets into the existing pinned `hftbacktest==2.4.4` research boundary;
-6. replay passive orders with explicit queue, latency, partial-fill, fee, and funding assumptions;
-7. emit deterministic Evidence proving exactly which raw bytes, normalization version, assumptions, and strategy inputs produced each replay result.
+1. seed historical research from Hyperliquid official L2 archives, node trade/fill datasets, and asset-context/funding sources;
+2. record forward Hyperliquid `l2Book` and `trades` WebSocket messages plus periodic reference state;
+3. preserve source payloads in an immutable raw store with SHA-256 provenance;
+4. normalize historical and forward sources into one canonical causal event model;
+5. reject unresolved gaps, conflicting duplicates, impossible books, or missing required funding/metadata before replay;
+6. convert accepted canonical events through the existing pinned `hftbacktest==2.4.4` research boundary;
+7. replay with explicit queue, latency, partial-fill, fee, funding, and order-size assumptions;
+8. emit deterministic Evidence identifying exactly which source bytes and assumptions produced each result.
 
-This design does **not** claim profitability and does not authorize live trading.
+This phase proves replay infrastructure only. It does not establish profitability and does not authorize live trading.
 
-## 2. Why the hybrid approach is required
+## 2. Why a hybrid source is required
 
-Hyperliquid's official historical archive is useful but is explicitly not guaranteed to be complete or timely. Historical L2 book snapshots are available under `hyperliquid-archive/market_data`, asset contexts under `hyperliquid-archive/asset_ctxs`, and trade/fill data is available from Hyperliquid node datasets. The official documentation also states that additional historical datasets may need to be recorded through the API.
+Hyperliquid officially states that historical archive uploads are approximately monthly, are not guaranteed to be timely, and may contain missing data. Historical L2 snapshots are provided in `market_data`, asset contexts in `asset_ctxs`, and node datasets provide trade/fill history. Hyperliquid also explicitly recommends recording additional datasets through the API when needed.
 
-The forward recorder therefore has two purposes:
+Therefore:
 
-- close data-coverage gaps for future experiments;
-- provide empirical feed-timing and continuity evidence that archive-only replay cannot supply.
-
-The archive and recorder must converge into the same canonical contract so Strategy, Calibration, Risk, and replay code do not contain separate historical/live-data logic.
+- historical sources provide breadth and older regimes;
+- the forward recorder provides future continuity, receive-time evidence, and a reference for archive assumptions;
+- both must normalize into the same canonical event model so Strategy/Calibration never branches on historical-vs-forward origin.
 
 ## 3. Scope and decomposition
 
-This specification is intentionally the **Tier-2 data and replay foundation**, not the full economic research campaign.
+This specification intentionally stops at the **Tier-2 Data & Replay Foundation**.
 
-### In scope
+In scope:
 
-- official Hyperliquid historical L2 ingestion;
-- official node trade/fill ingestion where available;
-- asset-context / funding-state ingestion needed for replay;
-- forward WebSocket recording for `l2Book` and `trades`;
-- periodic/reference capture required to recover funding and venue metadata;
-- immutable raw object storage layout;
-- SHA-256 provenance manifests;
-- canonical L2/trade/funding/reference event contracts;
-- deterministic normalization;
-- duplicate/order/gap/source audits;
-- dataset acceptance/rejection policy;
-- conversion to hftbacktest market events;
-- queue-model and latency-assumption contracts;
-- partial-fill replay;
-- fee and funding accounting inputs;
-- replay PnL attribution contracts;
-- deterministic replay Evidence;
-- small checked-in synthetic and recorded-format fixtures;
-- architecture, causality, metamorphic, and regression tests.
+- Hyperliquid archive L2 ingestion;
+- node trade/fill ingestion;
+- asset-context and funding/reference ingestion;
+- forward `l2Book` and `trades` recording;
+- periodic `metaAndAssetCtxs` reference capture;
+- immutable raw storage and provenance manifests;
+- canonical book/trade/funding/reference contracts;
+- deterministic ordering, deduplication, and gap audit;
+- snapshot-visibility rules for top-N books;
+- canonical-to-hftbacktest conversion;
+- conservative queue and partial-fill baseline;
+- latency scenario contracts;
+- fee/funding/adverse-selection/PnL attribution contracts;
+- replay order-size / market-impact eligibility;
+- deterministic Evidence;
+- unit/property/integration/regression tests.
 
-### Deferred to the next specification
+Deferred to the next specification:
 
 - broad parameter search;
-- stage promotion S0 -> S7 based on economic metrics;
-- symbol-disjoint train/validation/test orchestration;
-- sealed final OOS campaign;
-- production deployment;
-- exchange-order submission;
-- live capital allocation.
+- S0-S7 economic promotion;
+- symbol-disjoint train/validation/sealed-test orchestration;
+- full walk-forward campaign;
+- final sealed OOS decision;
+- live/testnet order submission and production deployment.
 
-The next economic-evaluation specification may only start after this foundation can reproduce accepted datasets and replay them deterministically.
+## 4. Verified external constraints as of 2026-08-10
 
-## 4. External contracts verified for this design
+The design treats the following as external contracts, not strategy assumptions:
 
-As of 2026-08-10:
-
-- Hyperliquid historical asset data is uploaded to `hyperliquid-archive` approximately monthly; timely updates are not guaranteed and data may be missing.
-- Historical L2 book snapshots are available in `market_data` and asset contexts in `asset_ctxs`.
-- Node datasets expose historical fills/trades; current node schemas also document hourly trade data and raw book diffs.
-- Hyperliquid WebSocket supports `l2Book` and `trades` subscriptions.
-- `WsBook` carries `coin`, `levels`, and exchange `time`; each level contains price, size, and order count.
-- the `l2Book` REST/info snapshot returns at most 20 levels per side.
-- Hyperliquid funding is paid hourly.
-- REST requests are rate limited; the recorder must not poll high-weight endpoints as a substitute for WebSocket data.
-- hftbacktest is replay-based and cannot model the market impact caused by our own orders.
-- `PartialFillExchange` can model partial execution under its replay assumptions.
-- hftbacktest queue position must be modeled for Market-By-Price data; `RiskAverseQueueModel` is the conservative maintained baseline.
-
-These are data/replay constraints, not alpha assumptions.
+- official Hyperliquid historical asset data may be missing or delayed;
+- historical L2 snapshots are available under `hyperliquid-archive/market_data`;
+- historical asset contexts are available under `hyperliquid-archive/asset_ctxs`;
+- official node datasets expose historical trades/fills and node schemas document raw book diffs;
+- WebSocket supports `l2Book` and `trades`;
+- `WsBook` carries `coin`, `levels`, and exchange `time` and is snapshot-oriented;
+- REST/info `l2Book` returns at most 20 levels per side;
+- `metaAndAssetCtxs` exposes current perpetual asset context including current funding and price context;
+- funding is applied hourly;
+- REST requests are rate limited and must not replace streaming market data;
+- hftbacktest is market-data replay and does not model the market impact created by our own orders;
+- `PartialFillExchange` supports partial-fill simulation under replay assumptions;
+- Market-By-Price replay requires an explicit queue model;
+- `RiskAverseQueueModel` is the maintained conservative baseline.
 
 ## 5. Architecture
 
 ```text
-Historical source                          Forward source
-+----------------------+                   +-----------------------+
-| HL archive L2       |                   | WS l2Book            |
-| HL node trades/fills|                   | WS trades            |
-| asset_ctxs/funding  |                   | periodic reference   |
-+----------+-----------+                   +-----------+-----------+
-           |                                           |
-           v                                           v
-+-----------------------------------------------------------------+
-|                     Immutable Raw Store                         |
-| raw bytes + source URI/type + receive time + SHA-256           |
-+-------------------------------+---------------------------------+
-                                |
-                                v
-+-----------------------------------------------------------------+
-|                    Deterministic Normalizer                     |
-| decode -> validate -> canonical event -> sequence/provenance     |
-+-------------------------------+---------------------------------+
-                                |
-                                v
-+-----------------------------------------------------------------+
-|                         Dataset Audit                           |
-| identity | monotonicity | duplicates | gaps | cross-feed checks |
-+-------------------------------+---------------------------------+
-                                |
-                     ACCEPTED only| 
-                                v
-+-----------------------------------------------------------------+
-|                    Canonical Replay Dataset                     |
-| book snapshots/events | trades | funding | venue metadata       |
-+-------------------------------+---------------------------------+
-                                |
-                +---------------+----------------+
-                |                                |
-                v                                v
-+-----------------------------+       +---------------------------+
-| Universal Calibration       |       | hftbacktest Adapter       |
-| volatility/A,k/OFI/markout  |       | queue/latency/partial fill|
-+--------------+--------------+       +-------------+-------------+
-               |                                    |
-               +----------------+-------------------+
-                                v
-+-----------------------------------------------------------------+
-| Calibrated Adaptive Grid -> Risk -> Reconciliation -> Replay     |
-+-------------------------------+---------------------------------+
-                                |
-                                v
-+-----------------------------------------------------------------+
-| Evidence + PnL Attribution + Replay Quality Report               |
-+-----------------------------------------------------------------+
+Official historical sources                 Forward recorder
+archive L2 / node trades / asset_ctxs        WS l2Book / WS trades
+                |                            metaAndAssetCtxs
+                +-------------+--------------+
+                              v
+                  Immutable Raw Object Store
+                  exact payload + SHA-256
+                              |
+                              v
+                  Deterministic Normalizer
+                              |
+                              v
+                    Dataset Quality Audit
+                   ACCEPTED / WARN / REJECT
+                              |
+                       ACCEPTED only
+                              v
+                   Canonical Replay Dataset
+             book + trades + funding + metadata
+                    |                   |
+                    v                   v
+          Universal Calibration   hftbacktest Adapter
+                    |                   |
+                    +---------+---------+
+                              v
+                 Calibrated Adaptive Grid
+                    -> Hard Risk
+                    -> Reconciliation
+                    -> Replay fills
+                              |
+                              v
+                Evidence + PnL Attribution
 ```
 
-The raw-data boundary is outside `strategy`, `risk`, `application`, and `calibration`. Exchange decoding may not leak into those core layers.
+Exchange decoding remains outside `strategy`, `risk`, `application`, and `calibration`.
 
 ## 6. Package boundaries
-
-Add research/data-specific packages rather than extending core Strategy types with Hyperliquid payload details.
 
 Recommended boundaries:
 
@@ -159,8 +134,8 @@ src/grid_trade/
   datasets/
     contracts.py
     manifest.py
-    audit.py
     canonical.py
+    audit.py
   integrations/
     hyperliquid/
       archive.py
@@ -168,345 +143,281 @@ src/grid_trade/
       forward_recorder.py
       normalization.py
   research/
-    hftbacktest_adapter.py        # existing, extended through canonical input
+    hftbacktest_adapter.py
     tier2_replay.py
     replay_attribution.py
 ```
 
-### `datasets/`
+`datasets/` is runtime-neutral and must not import Hyperliquid SDK, NautilusTrader, hftbacktest, Strategy, Risk, or Application.
 
-Runtime-neutral immutable dataset and provenance contracts. It may use only standard-library/core domain-safe dependencies and must not import Hyperliquid SDK, hftbacktest, NautilusTrader, Strategy, Risk, or Application.
+`integrations/hyperliquid/` owns source-specific acquisition and decoding and produces canonical dataset contracts only.
 
-### `integrations/hyperliquid/`
+`research/` may use datasets plus existing Application/Strategy/Risk and optional hftbacktest dependencies.
 
-Hyperliquid-specific payload decoding, transport, archive paths, WebSocket formats, and API/reference capture. It produces `datasets` canonical records and never calls Strategy.
+## 7. Immutable raw object store
 
-### `research/`
-
-May depend on canonical datasets, existing Application/Strategy/Risk contracts, and optional hftbacktest runtime. It owns replay orchestration and research-only PnL attribution.
-
-## 7. Immutable raw store
-
-The raw store is append-only from the perspective of research runs.
-
-A raw object identity includes:
+Every acquired object/segment has immutable identity containing:
 
 - source family: archive / node / websocket / info;
-- dataset type: l2Book / trade / fill / asset_ctx / funding / metadata;
+- dataset type;
 - instrument identity;
-- source timestamp range if known;
-- recorder receive-time range if applicable;
-- byte length;
-- SHA-256 of exact bytes;
+- source timestamp range when known;
+- recorder receive-time range when applicable;
+- exact byte length;
+- SHA-256 of the exact stored payload;
 - acquisition timestamp;
 - source locator metadata;
 - collector/decoder schema version.
 
-Raw bytes are never rewritten to "fix" bad data. Corrections produce a new object and a new manifest.
+Raw data is never edited to repair errors. A correction becomes a new raw object and new manifest.
 
-Large external datasets are not committed to Git. Git contains schemas, tiny fixtures, manifests/examples, and deterministic code only.
+Large datasets are not committed to Git. Git stores only code, schemas, tiny source-format fixtures, example manifests, and expected deterministic digests.
 
-## 8. Forward recorder design
+## 8. Forward recorder
 
-### 8.1 Required subscriptions
+### 8.1 Streaming inputs
 
-For each explicitly configured single instrument:
+For each explicitly configured single instrument, subscribe to:
 
 - `l2Book`;
 - `trades`.
 
-The recorder does not subscribe to all instruments by default. Experiment configuration selects the recording universe.
+The recorder is not an all-market crawler by default.
 
-### 8.2 Reference capture
+### 8.2 Reference inputs
 
-The recorder additionally captures enough reference state to support later deterministic replay:
+On connection, record current perpetual metadata/context. While connected, record `metaAndAssetCtxs` with a **default 60-second cadence**. The cadence is an explicit recorder meta-parameter and is included in provenance.
 
-- instrument/venue metadata required for tick/lot and contract interpretation;
-- funding/reference state at an explicitly configured cadence appropriate to the source;
-- recorder clock/receive timestamp for every inbound payload.
+This periodic source supplies current funding/reference context for later replay and audit. A gap larger than two configured reference intervals is recorded as a reference-data gap; it is never silently forward-filled as measured state.
 
-Funding is not reconstructed from future information. Hourly realized funding applied to positions must come from observations that were available by the relevant funding boundary.
+Static/slow-changing venue metadata is also snapshotted at recorder startup and whenever an explicit metadata refresh is requested.
 
-### 8.3 Recorder durability
+### 8.3 Durable segments
 
-Each received payload is written before downstream normalization acknowledges it.
+Inbound payload is persisted before downstream normalization acknowledges it. Segment rotation is deterministic by configured time/size policy.
 
-The recorder uses segment files with deterministic rotation by time and/or byte count. A segment is finalized by:
+Finalization order:
 
 1. flush;
 2. close;
-3. SHA-256;
+3. SHA-256 exact segment bytes;
 4. manifest entry;
-5. atomic publication of the finalized manifest record.
+5. atomic publication of the finalized manifest entry.
 
-An interrupted open segment is marked incomplete and must not silently become an accepted replay segment.
+Interrupted segments are explicitly incomplete and cannot enter an `ACCEPTED` dataset.
 
-### 8.4 Heartbeats and reconnects
+### 8.4 Reconnect and heartbeat
 
-Hyperliquid may close inactive WebSocket connections. Recorder logic must support heartbeat/ping handling and reconnect.
+Recorder supports Hyperliquid heartbeat/ping requirements and reconnects.
 
-Reconnect creates an explicit continuity boundary. The recorder must capture:
+Every disconnect/reconnect produces a continuity record containing disconnect time, reconnect times, first post-reconnect exchange timestamp, and uncovered interval.
 
-- disconnect time;
-- reconnect start/end;
-- first post-reconnect exchange timestamp;
-- whether a fresh reference/L2 snapshot was acquired;
-- inferred uncovered interval.
-
-A reconnect is never hidden by concatenating files as if no gap occurred.
+The first valid post-reconnect `WsBook` establishes a new authoritative visible-book snapshot boundary. Data before and after the gap is not concatenated as if queue continuity were known.
 
 ## 9. Canonical event model
 
-All accepted sources normalize into immutable canonical records.
+Every canonical event contains:
 
-### 9.1 Common envelope
-
-Every event contains:
-
-- `event_type`;
-- `instrument_id`;
-- `source_id`;
-- `exchange_timestamp_ns`;
-- `local_timestamp_ns` when observed;
-- source sequence/block/trade identifier when available;
+- event type;
+- instrument/source identity;
+- exchange timestamp;
+- local receive timestamp when actually observed;
+- source sequence/block/trade identity when available;
 - raw object SHA-256;
 - raw record ordinal/offset;
 - normalization schema version.
 
-### 9.2 Canonical book event
+### 9.1 Canonical book snapshot
 
-Contains at minimum:
+Contains ordered bid/ask tuples of `(price, quantity, order_count)` plus source precision/aggregation metadata.
 
-- bids and asks as ordered `(price, quantity, order_count)` tuples;
-- full-vs-aggregated precision metadata;
-- snapshot/diff classification;
-- source timestamp.
+Historical `l2Book` and WebSocket `WsBook` are treated as **snapshot-like MBP observations**, not Market-By-Order data and not raw diffs.
 
-For the historical `l2Book` archive and WebSocket `WsBook`, the maintained first implementation treats each message as a snapshot-like MBP observation unless the source explicitly guarantees diff semantics.
+### 9.2 Top-N visibility and snapshot-to-depth conversion
 
-Raw node book diffs are a separate source class and must not be mixed with snapshot semantics without an independently verified reconstruction path.
+This is a hard replay contract.
 
-### 9.3 Canonical trade event
+A level that disappears between two top-N snapshots is considered a confirmed zero/removal only when its price remains inside the newly observable price range for that side and is absent from the new snapshot.
 
-Contains:
+If a previously visible level merely falls outside the new top-N observable boundary, the system records **visibility lost**, not cancellation.
 
-- aggressor side using one repository-wide convention;
-- price;
-- quantity;
-- globally stable source identifier when derivable;
-- exchange timestamp;
-- source metadata required to deduplicate replayed trades.
+Consequences:
 
-The trade-side mapping is explicitly tested against Hyperliquid source semantics before acceptance.
+- no queue advancement or cancellation evidence is invented outside the visible range;
+- a strategy order whose price loses trustworthy book visibility becomes replay-ineligible until continuity is re-established;
+- promoting replay cannot claim fills while queue state at the order price is unknown;
+- a fresh snapshot/re-entry starts a new visibility epoch rather than pretending the old queue survived;
+- raw node book diffs, if supported later, are a distinct higher-fidelity source and may not be mixed into snapshot semantics without a verified reconstruction contract.
 
-### 9.4 Canonical funding/reference event
+Canonical-to-hftbacktest conversion derives deterministic depth updates only inside the trustworthy observable domain.
 
-Contains:
+### 9.3 Canonical trade
 
-- applicable interval/boundary timestamp;
-- funding rate observed for that interval;
-- oracle/reference price when required for funding notional;
-- source and observation timestamp;
-- quality/readiness state.
+Contains aggressor side under one repository convention, price, quantity, stable source identity when available, and exchange timestamp.
 
-Missing funding is `unavailable`, never zero-filled.
+Hyperliquid side mapping is tested against official source semantics before dataset acceptance.
 
-## 10. Time model and causality
+### 9.4 Canonical funding/reference
 
-Three time concepts are kept separate:
+Contains observation timestamp, applicable funding boundary/interval, current/applied funding value as appropriate to the source, oracle/reference price when required for accounting, and readiness/quality state.
+
+Missing funding/reference is unavailable, never zero-filled.
+
+## 10. Time and causality
+
+Keep separate:
 
 1. exchange/event time;
 2. recorder local receive time;
-3. strategy decision/replay time.
+3. strategy/replay decision time.
 
-Historical archive data may not possess realistic local receive time. Such datasets must not fabricate measured feed latency.
+Archive data must not fabricate measured local latency. Archive local time may be synthesized only through an explicitly named latency scenario and is labeled synthetic in Evidence.
 
-For archive replay:
+Forward data preserves observed receive time. Feed-latency models may be learned only from a declared calibration split and cannot use future sealed observations to rewrite earlier latency.
 
-- exchange time is authoritative for event ordering;
-- local time may be synthesized only through an explicit latency model;
-- that synthetic latency is Evidence and never described as measured.
+Future book/trade/funding/markout records cannot alter an earlier strategy decision digest.
 
-For forward recorder replay:
+## 11. Ordering and deduplication
 
-- actual recorder receive time is preserved;
-- observed feed-delay distributions may be estimated from exchange vs local time;
-- future observations may not alter latency assigned to earlier events except through a predeclared offline calibration split.
+Collapse only provably duplicate source records.
 
-## 11. Deduplication and ordering
+Numerically identical snapshots at different timestamps are distinct observations.
 
-Normalization may collapse only **provably duplicate source records**.
+Conflicting records with the same stable identity reject the dataset.
 
-Duplicate keys are source-specific and may include:
-
-- trade/block identifiers;
-- exact event identity plus source ordinal where no stable ID exists;
-- raw object hash + record offset.
-
-Numerically equal book snapshots at different timestamps are not duplicates.
-
-Canonical output ordering uses a deterministic tie-break hierarchy:
+Deterministic tie-break ordering is schema-versioned:
 
 1. exchange timestamp;
-2. source-defined sequence/block identifier when available;
-3. event-type precedence declared in the dataset schema;
+2. source sequence/block ID when available;
+3. declared event-type precedence;
 4. raw object hash;
 5. raw record ordinal.
 
-The precedence is part of the schema version because changing it can change fills.
+Changing ordering policy changes dataset schema identity because fills may change.
 
-## 12. Dataset audit and acceptance
+## 12. Dataset audit
 
-Every replay dataset passes a separate audit before Strategy is allowed to consume it.
-
-### 12.1 Required checks
-
-- instrument/source identity consistency;
-- valid positive prices and non-negative/positive quantities as required by event type;
-- book bid/ask ordering;
-- no crossed book unless the source contract permits/transiently explains it;
-- monotonic deterministic event ordering;
-- duplicate classification;
-- timestamp gap statistics;
-- reconnect/gap boundaries for forward data;
-- archive segment coverage against requested intervals;
-- trade/book overlap coverage;
-- funding coverage;
-- tick/lot metadata availability;
-- raw-object hashes resolvable from the manifest;
-- normalization version fixed for the run.
-
-### 12.2 Acceptance states
-
-Use explicit states:
+Acceptance states:
 
 - `ACCEPTED`;
 - `ACCEPTED_WITH_WARNINGS`;
 - `REJECTED`.
 
-Economic promotion runs require `ACCEPTED` unless an experiment explicitly declares a non-promoting sensitivity analysis.
+Economic promotion later requires `ACCEPTED`; warning datasets may be used only for explicitly non-promoting sensitivity work.
 
-Warnings may be used for non-critical sparse auxiliary state. Unknown book/trade gaps that can change fill interpretation are rejection conditions for promoting runs.
+Required audit checks include:
 
-### 12.3 No silent interpolation
+- identity consistency;
+- valid prices/quantities;
+- bid/ask ordering;
+- crossed/impossible books;
+- deterministic monotonic ordering;
+- duplicate/conflict counts;
+- top-N visibility continuity;
+- timestamp-gap distributions;
+- reconnect intervals;
+- archive requested-vs-observed coverage;
+- trade/book overlap;
+- funding/reference coverage;
+- tick/lot metadata;
+- raw-hash resolvability;
+- normalization version;
+- replay order-price visibility.
 
-The audit layer does not invent L2 levels, trades, queue events, or funding observations.
+Unknown book/trade gaps capable of changing fill interpretation are rejection conditions for promoting datasets.
 
-Interpolation may be used only for explicitly continuous non-execution research features under a separate declared transformation and never to manufacture fill evidence.
+The audit layer never interpolates L2 levels, trades, queue events, or funding to manufacture fill evidence.
 
 ## 13. Historical ingestion
 
-### 13.1 Archive L2
+### 13.1 L2 archive
 
-Historical loader accepts explicit date/hour/instrument requests and imports official `market_data/.../l2Book/...` objects.
+Loader accepts explicit date/hour/instrument requests for official `market_data/.../l2Book/...` objects.
 
-Each downloaded object is hashed before decoding. Decompression/decoding metadata is recorded separately so the compressed source bytes remain identifiable.
+Hash compressed source bytes before decoding. Decompression and decoder versions are separate provenance fields.
 
 ### 13.2 Node trades/fills
 
-Use official node trade/fill datasets as the historical trade source when available for the requested interval.
-
-Different historical node formats are separate decoder versions. Format detection must be explicit and fail closed on unknown schema.
+Use official node trade/fill datasets when available. Different historical formats use explicit decoder versions; unknown format fails closed.
 
 ### 13.3 Asset contexts / funding
 
-Asset contexts and/or official funding-history/reference sources are ingested only through explicit decoder contracts. The replay dataset records exactly which source provided funding and oracle/reference state.
+Use official asset-context and/or historical funding sources through explicit source contracts. Record exactly which source supplied current funding, applied funding, and oracle/reference state.
 
-The implementation must not infer historical funding from current metadata.
+Never infer historical funding from current metadata.
+
+### 13.4 Network policy
+
+Bulk archive acquisition is an explicit operator/research command and may incur requester-pays transfer cost.
+
+Normal Core/Research CI must **not** depend on live Hyperliquid API, WebSocket, or S3 availability. CI uses tiny checked-in fixtures that preserve official payload shapes. Optional network conformance tests are separate and non-blocking until a dedicated policy promotes them.
 
 ## 14. hftbacktest conversion
 
-The existing `grid_trade.research.hftbacktest_adapter` remains the optional-runtime boundary and remains pinned to `hftbacktest==2.4.4` until an independently reviewed dependency upgrade.
+Keep the existing optional-runtime boundary pinned to `hftbacktest==2.4.4` unless a separate dependency review approves an upgrade.
 
-The existing synthetic `MicrostructureFixture` remains as a regression fixture.
+The existing synthetic `MicrostructureFixture` remains unchanged as regression evidence.
 
-A new canonical-to-hft conversion path maps accepted canonical events to hftbacktest events.
+New canonical conversion uses:
 
-### 14.1 Maintained baseline model
-
-- Market-By-Price replay;
+- Market-By-Price representation;
 - `PartialFillExchange`;
-- `RiskAverseQueueModel`;
-- explicit tick size;
-- explicit lot size;
-- linear contract model matching the normalized research representation;
-- maker/taker fee rates from an experiment fee contract;
-- explicit entry and response latency model.
+- `RiskAverseQueueModel` baseline;
+- explicit tick/lot sizes;
+- linear contract representation matching current research model;
+- explicit maker/taker fees;
+- explicit feed/entry/response latency scenarios;
+- visibility epochs from Section 9.2.
 
-### 14.2 Queue model sensitivity
+Alternative probabilistic queue models are sensitivity analyses only until forward evidence justifies calibration. A more profitable queue model cannot replace the conservative baseline merely because it improves PnL.
 
-`RiskAverseQueueModel` is the promotion baseline because it is conservative with respect to queue advancement.
+## 15. Market-impact / order-size eligibility
 
-Alternative probabilistic queue models may be used only as separately reported sensitivity analyses until forward observed fills justify calibration.
+hftbacktest cannot alter replayed market depth in response to our orders. Therefore promoting replay must constrain our simulated order size.
 
-No favorable queue model may replace the conservative baseline merely because it improves PnL.
+Record at minimum:
 
-## 15. Order-size / market-impact eligibility
+- order quantity / same-level visible quantity when defined;
+- order notional / visible top-N notional;
+- maximum and high-quantile participation ratios;
+- time spent near the visibility boundary.
 
-hftbacktest cannot change the replayed market in response to our orders, so the research system must gate replay order size.
+A predeclared hard eligibility threshold blocks evidence where our order is too large relative to visible liquidity. The threshold is a research meta-parameter and is not tuned on sealed OOS PnL.
 
-Every promoting run records order-size diagnostics relative to contemporaneous visible depth, including at minimum:
+## 16. Latency scenarios
 
-- order quantity / same-level displayed quantity when defined;
-- order notional / top-N visible notional;
-- maximum and high-quantile participation ratios.
+Latency is frozen experiment metadata.
 
-A hard research eligibility threshold prevents orders that are too large relative to visible liquidity from being treated as trustworthy passive-fill evidence.
-
-The exact threshold is a predeclared research meta-parameter and must be stress-tested; it is not tuned on sealed OOS PnL.
-
-## 16. Latency model
-
-Latency is a first-class experiment contract.
-
-### Historical archive
-
-Archive-only data has no claim to measured local receive latency. Use named synthetic scenarios such as:
+Archive scenarios may include:
 
 - zero-latency mechanics sanity check;
 - conservative fixed latency;
-- distribution sampled from a training-period forward-recorder empirical model.
+- distribution estimated from training-period forward recorder data.
 
-### Forward recorder
+Forward replay preserves observed exchange/receive timestamps for feed latency.
 
-Preserve exchange and receive timestamps. Estimate feed-latency distributions only from the allowed calibration split.
+Order entry/response latency is distinct from feed latency. Until measured via a separate testnet/live conformance exercise, entry/response latency remains synthetic or externally measured scenario input.
 
-Order entry/response latency is not assumed equal to market-data latency. Until measured from testnet/live conformance, it remains an explicit scenario parameter.
-
-Every replay report identifies whether each latency component is measured, estimated, or synthetic.
+Every report labels each latency component as measured, estimated, or synthetic.
 
 ## 17. Funding accounting
 
-Funding is separate from spread/directional PnL.
+Funding is a separate PnL component.
 
-For each hourly funding boundary:
+At each hourly funding boundary:
 
-- determine signed position immediately before the applicable boundary according to the replay clock;
-- use the funding rate for that interval;
-- use the source-required oracle/reference price for notional when available under the verified Hyperliquid contract;
-- record funding cash flow as its own attribution component.
+- use signed position immediately before the applicable boundary;
+- use the applicable official funding rate event;
+- use the required oracle/reference price for notional under the verified Hyperliquid contract;
+- emit the funding cash flow separately.
 
-Missing required funding/reference state fails the funding-complete promoting run rather than substituting zero.
+A funding-complete promoting run rejects missing required funding/reference state instead of substituting zero.
 
-## 18. Fee accounting
+## 18. Fees and PnL attribution
 
-Fee configuration is an experiment input derived from a named fee schedule or explicit conservative scenario.
+Fee scenario is frozen experiment input from a named fee schedule or conservative scenario.
 
-The research report separates:
-
-- maker fees/rebates;
-- taker/emergency fees;
-- funding;
-- gross spread capture;
-- directional inventory mark-to-market;
-- adverse-selection markout;
-- emergency execution cost.
-
-The first Tier-2 foundation need not predict future user fee tiers. It must support deterministic fee scenarios and preserve the scenario identity in Evidence.
-
-## 19. PnL attribution contract
-
-The replay foundation exposes additive attribution rather than a single opaque return number:
+Required additive attribution:
 
 ```text
 net_pnl =
@@ -518,208 +429,207 @@ net_pnl =
   - emergency_execution_cost
 ```
 
-Accounting identities are tested exactly within the repository's Decimal precision contract where applicable.
+Report maker fees/rebates, taker/emergency fees, funding, spread capture, inventory mark-to-market, adverse-selection markout, and emergency cost independently.
 
-Mark-to-market reference and closeout convention are explicit experiment metadata.
+Mark-to-market reference and closeout convention are explicit manifest fields.
 
-## 20. Adverse-selection evidence
+## 19. Adverse-selection labels
 
-For each passive fill, emit causal post-fill markout labels at configured horizons.
+Every passive fill may schedule post-fill markout labels at configured horizons.
 
-A markout becomes available only after its horizon matures. It may be used by later calibration decisions but never by the decision that generated the fill.
+A markout becomes visible to Calibration only after its horizon matures. Pending future markouts cannot affect the decision that generated the fill or evict current causal samples prematurely.
 
-This extends the existing matured-markout causality rule to real replay data.
+## 20. Replay orchestration
 
-## 21. Replay orchestration
+The Tier-2 runner consumes an `ACCEPTED` canonical dataset and frozen experiment manifest.
 
-The Tier-2 runner operates on an `ACCEPTED` canonical dataset and a frozen experiment manifest.
+At replay time:
 
-Per event window:
-
-1. advance canonical market events;
-2. update causal calibration only with matured information;
-3. derive risk capacity from the configured research account state;
+1. advance only events whose replay time has arrived;
+2. update Calibration with currently matured evidence;
+3. derive risk capacity from configured research account state;
 4. obtain calibrated Adaptive Grid candidate;
 5. apply Hard Risk;
-6. reconcile cancel/replace orders;
-7. submit/cancel through hftbacktest adapter with declared latency/queue assumptions;
+6. reconcile cancel/replace intents;
+7. map eligible orders into hftbacktest with declared latency/queue assumptions;
 8. ingest simulated fills;
-9. update inventory and future markout queues;
-10. apply funding at its event boundary;
-11. emit canonical Evidence.
+9. update inventory and pending markout queues;
+10. apply funding at the correct boundary;
+11. emit Evidence and attribution.
 
-No future event is supplied to Strategy or Calibration before the replay clock reaches it.
+An order at an untrustworthy visibility price is not submitted as promoting replay evidence.
 
-## 22. Evidence and reproducibility
+## 21. Evidence
 
-A Tier-2 Evidence root includes digests for:
+Tier-2 Evidence root digests:
 
 - experiment manifest;
 - every raw input object;
+- raw acquisition manifest;
 - canonical dataset manifest;
-- normalization schema/version;
-- dataset audit report;
-- strategy/calibration config;
-- risk config;
+- normalization schema;
+- audit report;
+- Strategy/Calibration config;
+- Risk config;
 - fee scenario;
 - funding source;
 - latency scenario;
 - queue model;
+- visibility policy;
 - hftbacktest version;
 - event-ordering policy;
 - replay result;
 - PnL attribution;
 - code revision.
 
-Running the same accepted dataset and same frozen experiment manifest in separate Python processes must produce the same Evidence digest, subject to explicitly documented deterministic hftbacktest conversions.
+Same accepted dataset + same manifest + same code must reproduce the same replay Evidence digest in separate Python processes.
 
-Wall-clock acquisition timestamps may exist in provenance but must not contaminate the deterministic replay digest unless deliberately part of the dataset identity.
+Wall-clock acquisition metadata may be retained in provenance but does not contaminate deterministic replay output unless deliberately declared part of dataset identity.
 
-## 23. Storage and privacy/security
+## 22. Security
 
-The recorder stores public market data only for the Tier-2 foundation.
+This foundation records public market/reference data and requires no trading private key for `l2Book` or `trades`.
 
-It does not require private trading keys to record `l2Book` or `trades`.
+Private user streams, signed trading requests, wallet keys, and live account reconciliation are outside this specification.
 
-Any future private user stream or testnet account data requires a separate security review and is outside this specification.
+Secrets or wallet material must never appear in Git, raw manifests, or replay Evidence.
 
-Secrets, credentials, signed requests, and wallet private keys must never be committed to Git or embedded in dataset manifests.
+## 23. Fail-closed conditions
 
-## 24. Failure handling
+Reject or fail closed on:
 
-Fail closed on:
-
-- unknown source schema;
-- corrupt compressed/raw object;
+- unknown decoder schema;
+- corrupt/decompression failure;
 - SHA mismatch;
-- impossible/crossed book not permitted by source contract;
-- non-monotonic source ordering that cannot be deterministically resolved;
-- unresolved high-impact data gaps;
+- invalid/crossed book not permitted by source semantics;
+- unresolved event ordering;
+- conflicting duplicates;
+- high-impact coverage gap;
+- lost book visibility at an active strategy order price;
 - missing required tick/lot metadata;
-- required funding missing for a funding-complete run;
-- duplicate event identity with conflicting payload;
+- missing required funding/reference data;
 - unsupported hftbacktest runtime version;
-- order quantity/tick misalignment;
-- replay order-size eligibility violation for promoting evidence.
+- tick/lot misaligned strategy orders;
+- market-impact eligibility violation for promoting evidence.
 
-A failure produces an audit/Evidence record where possible; it does not mutate or delete the source data.
+Failures produce audit/Evidence records where possible and never mutate source data.
 
-## 25. Testing strategy
+## 24. Testing strategy
 
-### Unit tests
+Unit tests:
 
-- raw object/manifest validation;
-- canonical event validation;
-- source decoder schema validation;
-- trade-side mapping;
-- deterministic event ordering;
-- duplicate detection;
+- manifests and raw hashes;
+- canonical contracts;
+- Hyperliquid decoder validation;
+- aggressor-side mapping;
+- snapshot top-N visibility transitions;
+- snapshot-to-depth conversion;
+- deterministic ordering/deduplication;
 - gap classification;
 - funding boundary accounting;
-- fee attribution;
-- PnL identity;
+- fee/PnL identities;
 - order-size eligibility;
-- latency-scenario validation.
+- latency scenario validation.
 
-### Property/metamorphic tests
+Property/metamorphic tests:
 
-- instrument rename changes identity only, not normalized numeric behavior;
-- common price/size scaling preserves relative calibration and replay geometry when tick/lot metadata scales consistently;
-- input file enumeration order cannot change canonical dataset digest;
-- duplicate identical source records cannot change output;
+- instrument rename changes identity only;
+- common price/size scale leaves relative behavior invariant when venue metadata scales consistently;
+- file enumeration order cannot change canonical digest;
+- identical duplicates cannot change output;
 - conflicting duplicates always reject;
-- future trade/book/funding/markout records cannot change an earlier decision digest;
-- recorder segment rotation cannot change the normalized canonical stream.
+- future book/trade/funding/markout data cannot change earlier decisions;
+- segment rotation cannot change canonical stream;
+- a level leaving top-N range cannot be reclassified as a confirmed cancel;
+- replay cannot submit promoting orders into unknown visibility epochs.
 
-### Integration tests
+Integration tests:
 
-- tiny official-format historical L2 fixture -> raw manifest -> canonical dataset -> audit;
-- tiny node trade fixture -> canonical trades;
-- forward WebSocket message fixture -> same canonical form as historical equivalent;
-- canonical dataset -> hftbacktest conversion;
-- passive BUY and SELL partial-fill paths;
+- official-format historical L2 fixture -> raw -> canonical -> audit;
+- node trade fixture -> canonical trades;
+- forward `WsBook`/`WsTrade` fixtures -> same canonical semantics;
+- `metaAndAssetCtxs` fixture -> reference/funding state;
+- canonical snapshot sequence -> trustworthy depth events;
+- canonical events -> hftbacktest;
+- passive BUY/SELL partial fills;
 - cancel-before-replace under non-zero latency;
-- funding boundary with held long/short inventory;
-- deterministic replay in two fresh processes.
+- funding with long and short positions;
+- two fresh-process replay digest equality.
 
-### Regression requirements
+Regression gates:
 
-All existing Phase A/B/C Core and Research tests remain green.
+- all existing Phase A/B/C Core and Research tests remain green;
+- all six existing deterministic Evidence digests remain unchanged.
 
-Existing six deterministic Evidence digests remain unchanged because the previous synthetic runners are regression baselines and are not rewritten by this foundation.
+## 25. Data-quality report
 
-## 26. Data-quality metrics
+Every dataset reports before economic metrics:
 
-Every accepted dataset reports at minimum:
+- requested vs observed coverage;
+- raw bytes/object count;
+- canonical event count;
+- book/trade/reference counts;
+- duplicates/conflicts;
+- max/quantile book gaps;
+- reconnect intervals;
+- visibility-loss intervals;
+- invalid/crossed book count;
+- trade/book overlap;
+- funding/reference readiness percentage;
+- calibration readiness percentage;
+- replay-order visibility eligibility percentage.
 
-- requested vs observed time coverage;
-- book message count;
-- trade count;
-- funding/reference count;
-- duplicate count;
-- conflicting duplicate count;
-- maximum and quantile book-message gaps;
-- maximum and quantile trade gaps where meaningful;
-- reconnect intervals for forward data;
-- crossed/invalid book count;
-- source overlap intervals;
-- percentage of replay time with funding/reference readiness;
-- percentage of replay time with calibration readiness;
-- raw bytes and object counts;
-- canonical event count.
+## 26. Promotion gates to the economic-evaluation phase
 
-These metrics are Evidence and are visible before economic metrics.
+This foundation is ready for the next spec only when:
 
-## 27. Promotion gates for the next phase
+1. historical and forward fixtures normalize to the same canonical semantics;
+2. raw hashes/manifests are reproducible;
+3. gap/duplicate/visibility audit is deterministic and fail closed;
+4. future-data perturbation cannot alter earlier decisions;
+5. hftbacktest conversion supports both sides, partial fill, cancel/replace, and non-zero latency;
+6. top-N visibility loss cannot create fake cancellation/fill evidence;
+7. funding and fees are separately attributable;
+8. market-impact/order-size eligibility is enforced;
+9. fresh processes reproduce the same Tier-2 Evidence digest;
+10. existing six Evidence digests remain unchanged;
+11. exact-head Core and Research CI are green.
 
-The Tier-2 foundation is considered ready for the economic-evaluation specification only when:
+Passing these gates means the system is suitable to **test** economic hypotheses. It does not mean the Grid strategy is profitable.
 
-1. official-format archive fixtures and forward fixtures normalize into the same canonical semantics;
-2. raw object hashes and manifests are reproducible;
-3. gap/duplicate/cross-source audit is deterministic and fail closed;
-4. canonical replay preserves causality under future-data perturbation tests;
-5. hftbacktest conversion supports both sides, partial fills, cancel/replace, and non-zero latency;
-6. funding and fees are separately attributable;
-7. replay order-size eligibility is enforced;
-8. the same dataset/manifest yields the same replay Evidence digest in fresh processes;
-9. Phase A/B/C regression digests remain unchanged;
-10. Core and Research CI are green on the exact final branch head.
+## 27. Follow-on economic specification
 
-Meeting these gates means the infrastructure is suitable to **test** economic hypotheses. It does not mean the Grid strategy is profitable.
+After this foundation is approved and implemented, the next design will define:
 
-## 28. Next specification after approval and implementation
-
-The follow-on design will define the actual economic campaign:
-
-- explicit instrument universe selection by liquidity/data quality, not symbol preference;
-- train/validation/sealed symbol-disjoint partitions;
-- rolling time walk-forward within each partition;
-- S0 -> S7 ablation promotion criteria;
+- instrument universe by liquidity/data quality rather than symbol preference;
+- symbol-disjoint train/validation/sealed-test partitioning;
+- rolling time walk-forward;
+- S0-S7 ablation promotion criteria;
 - conservative queue/latency/fee/funding scenarios;
 - bull/bear/range/crash/high-vol/low-vol reporting;
 - B&H and simpler Grid baselines;
 - return, drawdown, CVaR, inventory RMS, maker fill rate, adverse markout, funding, and emergency-cost gates;
 - final sealed OOS decision with no parameter rescue after opening the seal.
 
-## 29. Explicit non-goals
+## 28. Explicit non-goals
 
 This specification does not:
 
 - submit Hyperliquid orders;
 - claim historical profitability;
-- choose a final production leverage;
-- tune parameters using sealed OOS data;
 - infer fills from OHLC;
-- use archive snapshots as if they were full Market-By-Order history;
-- claim hftbacktest models our own market impact;
-- treat missing funding or L2 data as zero;
+- treat top-20 snapshots as full Market-By-Order history;
+- invent cancellations outside observable book range;
+- claim hftbacktest models our market impact;
+- treat missing funding/L2 as zero;
 - introduce per-symbol strategy branches;
+- tune on sealed OOS;
 - merge Phase C or this branch into `main` without explicit review/merge instruction.
 
-## 30. Design decision summary
+## 29. Decision summary
 
-The maintained decision is **Historical + Forward Recorder hybrid** with an immutable evidence-first dataset pipeline.
+Use official historical breadth plus forward recorder continuity, normalize both into one immutable canonical dataset, reject unresolved execution-data uncertainty, and replay through a conservative hftbacktest baseline.
 
-Historical official data provides breadth; forward recording provides continuity and timing evidence. Both must normalize to one canonical event model before research. `RiskAverseQueueModel + PartialFillExchange` is the conservative hftbacktest baseline, while queue/latency alternatives remain sensitivity analyses. Replay order sizes are explicitly constrained because replay cannot model our own market impact. Funding, fees, adverse selection, and emergency execution remain separate PnL components.
+The critical safety rule is that **unknown microstructure remains unknown**: missing book range, gaps, funding, latency provenance, or market-impact eligibility cannot be converted into favorable fill evidence.
 
-The result of this phase is not a profitable strategy. It is a trustworthy enough replay substrate that a later sealed economic experiment can reject or support the strategy without confusing fixture mechanics with market evidence.
+The output of this phase is a trustworthy replay substrate for later economic rejection/promotion, not a profitability result.
