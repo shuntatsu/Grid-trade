@@ -57,6 +57,26 @@ class CalibrationEngineState:
             if not isinstance(price, Decimal) or not price.is_finite() or price <= 0:
                 raise ValueError("prices must contain finite positive Decimals")
 
+        identity_initialized = self.source_id is not None and self.instrument_id is not None
+        timestamp_initialized = self.last_timestamp is not None
+        has_history = bool(
+            self.prices or self.volatility_state.prices or self.funding_state.values
+        )
+
+        if self.generation == 0:
+            if identity_initialized or timestamp_initialized or has_history:
+                raise ValueError("generation zero requires pristine calibration state")
+            return
+
+        if not identity_initialized or not timestamp_initialized:
+            raise ValueError("positive generation requires initialized identity and timestamp")
+        if not self.source_id.strip() or not self.instrument_id.strip():
+            raise ValueError("initialized source_id and instrument_id must be non-empty")
+        if not self.prices or not self.volatility_state.prices:
+            raise ValueError("positive generation requires price history")
+        if self.prices[-1] != self.volatility_state.prices[-1]:
+            raise ValueError("price history and volatility state must share the latest price")
+
 
 @dataclass(frozen=True, slots=True)
 class CalibrationUpdate:
