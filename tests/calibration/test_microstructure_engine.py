@@ -1,4 +1,5 @@
 import datetime as dt
+from dataclasses import replace
 from decimal import Decimal, localcontext
 
 import pytest
@@ -184,6 +185,13 @@ def test_engine_becomes_ready_only_when_all_required_components_exist() -> None:
     assert estimate.microprice_relative_displacement is not None
     assert estimate.order_book_score is not None
     assert Decimal("-1") <= estimate.order_book_score <= Decimal("1")
+
+
+def test_ready_estimate_rejects_missing_required_component() -> None:
+    _, estimate = _advance_ready()
+
+    with pytest.raises(ValueError, match="ready microstructure estimate"):
+        replace(estimate, quote_distance_scale=None)
 
 
 def test_engine_freezes_config_after_first_observation() -> None:
