@@ -7,6 +7,7 @@ from grid_trade.calibration import CalibrationObservation
 from grid_trade.calibration.volatility import (
     RobustVolatilityConfig,
     RobustVolatilityState,
+    VolatilityEstimate,
     update_robust_volatility,
 )
 
@@ -21,7 +22,12 @@ def _observation(index: int, price: str) -> CalibrationObservation:
     )
 
 
-def _run(prices: list[str], *, min_samples: int = 3, window: int = 4):
+def _run(
+    prices: list[str],
+    *,
+    min_samples: int = 3,
+    window: int = 4,
+) -> tuple[RobustVolatilityState, VolatilityEstimate]:
     state = RobustVolatilityState()
     estimate = None
     config = RobustVolatilityConfig(
