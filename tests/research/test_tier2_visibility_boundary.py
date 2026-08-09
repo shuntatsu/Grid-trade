@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from grid_trade.datasets.audit import audit_canonical_dataset, audit_report_digest
 from grid_trade.datasets.canonical import (
     CanonicalBookLevel,
     CanonicalBookSnapshot,
@@ -84,18 +85,30 @@ def _trade(timestamp_ns: int) -> CanonicalEventEnvelope:
 
 
 def test_tier2_does_not_claim_fill_after_order_price_leaves_top_n_visibility() -> None:
+    raw_objects = (
+        _raw(DatasetType.L2_BOOK, _BOOK_HASH),
+        _raw(DatasetType.TRADES, _TRADE_HASH),
+    )
+    events = (
+        _book(1_000_000_000, "99", ordinal=0),
+        # Bid 99 falls below the new one-level observable bid boundary at 100.
+        _book(2_000_000_000, "100", ordinal=1),
+        _trade(3_000_000_000),
+    )
+    audit = audit_canonical_dataset(
+        events,
+        raw_objects=raw_objects,
+        expected_normalization_schema_version="canonical-v1",
+    )
     dataset = DatasetManifest(
         instrument="BTC",
-        raw_objects=(
-            _raw(DatasetType.L2_BOOK, _BOOK_HASH),
-            _raw(DatasetType.TRADES, _TRADE_HASH),
-        ),
+        raw_objects=raw_objects,
         normalization_schema_version="canonical-v1",
         ordering_schema_version="ordering-v1",
         audit_schema_version="audit-v1",
         acceptance=DatasetAcceptance.ACCEPTED,
         created_at=datetime(2026, 8, 10, tzinfo=UTC),
-        audit_digest="d" * 64,
+        audit_digest=audit_report_digest(audit),
     )
     manifest = Tier2ReplayManifest(
         dataset=dataset,
@@ -112,12 +125,6 @@ def test_tier2_does_not_claim_fill_after_order_price_leaves_top_n_visibility() -
             max_top_n_participation=Decimal("0.5"),
         ),
         synthetic_receive_latency_ns=0,
-    )
-    events = (
-        _book(1_000_000_000, "99", ordinal=0),
-        # Bid 99 falls below the new one-level observable bid boundary at 100.
-        _book(2_000_000_000, "100", ordinal=1),
-        _trade(3_000_000_000),
     )
     order = PassiveOrderIntent(
         client_order_id="tier2:g0:buy:l0",
