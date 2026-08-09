@@ -23,11 +23,11 @@ from grid_trade.integrations.hyperliquid.normalization import (
 __all__ = [
     "ARCHIVE_COLLECTOR_SCHEMA_VERSION",
     "ASSET_CONTEXT_DECODER_VERSION",
-    "ForwardSegment",
-    "ForwardSegmentWriter",
     "L2_BOOK_DECODER_VERSION",
     "NODE_DATA_COLLECTOR_SCHEMA_VERSION",
     "TRADES_DECODER_VERSION",
+    "ForwardSegment",
+    "ForwardSegmentWriter",
     "normalize_l2_book",
     "normalize_meta_and_asset_ctxs",
     "normalize_ws_trades",
