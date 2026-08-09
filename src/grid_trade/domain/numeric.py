@@ -1,5 +1,5 @@
 from contextlib import AbstractContextManager
-from decimal import Context, ROUND_HALF_EVEN, localcontext
+from decimal import Context, localcontext, ROUND_HALF_EVEN
 
 _DETERMINISTIC_DECIMAL_CONTEXT = Context(
     prec=50,
