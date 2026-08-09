@@ -51,6 +51,7 @@ class EvidenceKind(StrEnum):
     SHORT_DECISION = "short_decision"
     FUNDING_DECISION = "funding_decision"
     ORDER_BOOK_DECISION = "order_book_decision"
+    MICROSTRUCTURE_CALIBRATION = "microstructure_calibration"
     RUN_SUMMARY = "run_summary"
 
 
