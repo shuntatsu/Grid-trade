@@ -29,6 +29,12 @@ from grid_trade.calibration.microstructure_contracts import (
     OfiImpactSample,
     TopOfBookObservation,
 )
+from grid_trade.calibration.order_flow import (
+    compute_ofi,
+    microprice,
+    microprice_displacement,
+    normalized_ofi,
+)
 from grid_trade.calibration.trend import (
     TrendCalibrationConfig,
     TrendEstimate,
@@ -65,8 +71,12 @@ __all__ = [
     "TrendCalibrationConfig",
     "TrendEstimate",
     "VolatilityEstimate",
+    "compute_ofi",
     "estimate_arrival_intensity",
     "estimate_normalized_trend",
+    "microprice",
+    "microprice_displacement",
+    "normalized_ofi",
     "update_calibration_engine",
     "update_funding_calibration",
     "update_robust_volatility",
