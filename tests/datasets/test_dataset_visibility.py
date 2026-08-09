@@ -73,8 +73,8 @@ def test_level_beyond_new_deep_boundary_becomes_visibility_lost_not_cancelled() 
     assert lost_bid.change is VisibilityChange.VISIBILITY_LOST
     assert lost_bid.epoch_id == 0
 
-    lost_ask = _find(updates, side=BookSide.ASK, price="103")
-    assert lost_ask.change is VisibilityChange.CONFIRMED_ZERO
+    removed_ask = _find(updates, side=BookSide.ASK, price="101")
+    assert removed_ask.change is VisibilityChange.CONFIRMED_ZERO
 
 
 def test_reentry_after_visibility_loss_starts_new_epoch() -> None:
