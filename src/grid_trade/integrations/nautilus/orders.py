@@ -60,11 +60,7 @@ def build_nautilus_post_only_order(
     if order_factory is None:
         raise ValueError("strategy must expose order_factory")
 
-    side = (
-        NautilusOrderSide.BUY
-        if intent.side is OrderSide.BUY
-        else NautilusOrderSide.SELL
-    )
+    side = NautilusOrderSide.BUY if intent.side is OrderSide.BUY else NautilusOrderSide.SELL
     return order_factory.limit(
         instrument_id=instrument_id,
         order_side=side,
