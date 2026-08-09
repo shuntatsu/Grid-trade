@@ -45,6 +45,7 @@ class EvidenceKind(StrEnum):
     FILL = "fill"
     RISK_DECISION = "risk_decision"
     CENTER_DECISION = "center_decision"
+    SPACING_DECISION = "spacing_decision"
     RUN_SUMMARY = "run_summary"
 
 
