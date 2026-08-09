@@ -1,3 +1,19 @@
+from grid_trade.datasets.canonical import (
+    BookSide,
+    BookVisibilityTracker,
+    CanonicalBookLevel,
+    CanonicalBookSnapshot,
+    CanonicalEventEnvelope,
+    CanonicalEventType,
+    CanonicalFundingReference,
+    CanonicalPayload,
+    CanonicalTrade,
+    TradeSide,
+    VisibilityChange,
+    VisibilityEpoch,
+    VisibleDepthUpdate,
+    canonical_event_sort_key,
+)
 from grid_trade.datasets.contracts import (
     DatasetAcceptance,
     DatasetType,
@@ -9,12 +25,26 @@ from grid_trade.datasets.contracts import (
 from grid_trade.datasets.manifest import DatasetManifest, canonical_manifest_bytes
 
 __all__ = [
+    "BookSide",
+    "BookVisibilityTracker",
+    "CanonicalBookLevel",
+    "CanonicalBookSnapshot",
+    "CanonicalEventEnvelope",
+    "CanonicalEventType",
+    "CanonicalFundingReference",
+    "CanonicalPayload",
+    "CanonicalTrade",
     "DatasetAcceptance",
     "DatasetManifest",
     "DatasetType",
     "RawObjectIdentity",
     "RawObjectRef",
     "SourceFamily",
+    "TradeSide",
+    "VisibilityChange",
+    "VisibilityEpoch",
+    "VisibleDepthUpdate",
+    "canonical_event_sort_key",
     "canonical_manifest_bytes",
     "sha256_bytes",
 ]
