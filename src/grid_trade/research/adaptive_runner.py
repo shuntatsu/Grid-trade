@@ -537,7 +537,7 @@ def _controlled_fixture() -> tuple[tuple[MarketSnapshot, ...], tuple[AdaptiveSig
         ("100.20", "0.005", "0.05", "-0.30", "0", "0", None),
         ("99.80", "0.008", "0.05", "-0.90", "0", "0", None),
         ("99.70", "0.008", "0", "-0.90", "0.001", "0", None),
-        ("99.50", "0.012", "-0.04", "-0.90", "0.001", "0.5", "99.80"),
+        ("99.50", "0.012", "0", "-0.90", "0.001", "0.5", "99.80"),
     )
     snapshots: list[MarketSnapshot] = []
     signals: list[AdaptiveSignals] = []
