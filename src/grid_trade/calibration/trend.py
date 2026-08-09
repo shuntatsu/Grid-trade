@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from grid_trade.calibration.volatility import VolatilityEstimate
+from grid_trade.domain.numeric import deterministic_decimal_context
 
 _ZERO = Decimal(0)
 _ONE = Decimal(1)
@@ -67,12 +68,13 @@ def estimate_normalized_trend(
     for price in prices:
         _require_finite_positive(price, field="price")
 
-    horizon_return = (prices[-1] / prices[-(config.horizon + 1)]).ln()
-    volatility_scale = max(volatility.scale, config.min_volatility_scale)
-    denominator = volatility_scale * Decimal(config.horizon).sqrt()
-    raw_z = horizon_return / denominator
-    z_score = _clip(raw_z, -config.max_abs_z, config.max_abs_z)
-    score = _decimal_tanh(config.transform_gain * z_score)
+    with deterministic_decimal_context():
+        horizon_return = (prices[-1] / prices[-(config.horizon + 1)]).ln()
+        volatility_scale = max(volatility.scale, config.min_volatility_scale)
+        denominator = volatility_scale * Decimal(config.horizon).sqrt()
+        raw_z = horizon_return / denominator
+        z_score = _clip(raw_z, -config.max_abs_z, config.max_abs_z)
+        score = _decimal_tanh(config.transform_gain * z_score)
     return TrendEstimate(z_score=z_score, score=score, ready=True)
 
 
