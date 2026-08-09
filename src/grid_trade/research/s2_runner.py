@@ -13,7 +13,7 @@ from grid_trade.evidence.events import EvidenceEvent, EvidenceKind, PnLBreakdown
 from grid_trade.evidence.ledger import evidence_digest
 from grid_trade.strategy.dynamic_center import DynamicCenterConfig
 from grid_trade.strategy.grid_geometry import FixedLongGridConfig, build_long_grid_at_center
-from grid_trade.strategy.s2_adaptive_grid import S2GridDecision, S2GridState, initialize_s2_grid
+from grid_trade.strategy.s2_adaptive_grid import S2GridDecision, initialize_s2_grid
 from grid_trade.strategy.volatility_spacing import VolatilitySpacingConfig
 
 _ZERO_PNL = PnLBreakdown(
