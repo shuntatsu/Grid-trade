@@ -81,4 +81,28 @@ def filter_passive_orders(
     return tuple(accepted)
 
 
-__all__ = ["evaluate_risk", "filter_passive_orders"]
+def assess_passive_ladder_risk(
+    snapshot: MarketSnapshot,
+    limits: RiskLimits,
+    state: RiskState,
+    orders: tuple[PassiveOrderIntent, ...],
+) -> tuple[RiskDecision, tuple[PassiveOrderIntent, ...]]:
+    """Evaluate hard risk and make projected-position truncation explicit."""
+    decision = evaluate_risk(snapshot, limits, state)
+    filtered = filter_passive_orders(snapshot, limits, decision, orders)
+
+    if decision.allow_new_risk and filtered != orders:
+        return (
+            RiskDecision(
+                allow_new_risk=False,
+                cancel_all_passive=False,
+                target_flat=False,
+                reasons=(RiskReason.MAX_POSITION,),
+            ),
+            filtered,
+        )
+
+    return decision, filtered
+
+
+__all__ = ["assess_passive_ladder_risk", "evaluate_risk", "filter_passive_orders"]
