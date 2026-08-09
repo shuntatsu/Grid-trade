@@ -53,8 +53,8 @@ jobs:
       - name: Verify S0 evidence across fresh processes
         shell: bash
         run: |
-          first="$(uv run --frozen --extra dev --extra research python -m grid_trade.research.s0_runner)"
-          second="$(uv run --frozen --extra dev --extra research python -m grid_trade.research.s0_runner)"
+          first="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.s0_runner)"
+          second="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.s0_runner)"
           test -n "$first"
           test "$first" = "$second"
           echo "S0 evidence digest: $first"
