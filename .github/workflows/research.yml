@@ -2,7 +2,7 @@ name: Research Integration
 
 on:
   push:
-    branches: [grid-core]
+    branches: [main]
     paths:
       - "src/grid_trade/application/**"
       - "src/grid_trade/evidence/**"
@@ -24,7 +24,7 @@ on:
       - "uv.lock"
       - ".github/workflows/research.yml"
   pull_request:
-    branches: [main, grid-core]
+    branches: [main]
     paths:
       - "src/grid_trade/application/**"
       - "src/grid_trade/evidence/**"
