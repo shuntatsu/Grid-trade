@@ -19,6 +19,7 @@ def test_checked_in_adaptive_comparison_is_deterministic_and_no_go() -> None:
     assert tuple(stage.stage for stage in result.stages) == tuple(AdaptiveStage)
     assert all(stage.pnl.total == Decimal(0) for stage in result.stages)
     assert all(stage.execution_scope == "policy_reconciliation_only" for stage in result.stages)
+    assert all(stage.ending_inventory == Decimal(0) for stage in result.stages)
 
 
 def test_ablation_keeps_later_features_out_of_earlier_stages() -> None:
