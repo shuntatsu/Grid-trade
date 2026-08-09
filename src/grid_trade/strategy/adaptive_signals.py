@@ -27,5 +27,14 @@ class AdaptiveSignals:
             if self.microprice <= 0:
                 raise ValueError("microprice must be positive when present")
 
+    @classmethod
+    def neutral(cls) -> "AdaptiveSignals":
+        return cls(
+            trend_score=Decimal(0),
+            funding_rate=Decimal(0),
+            order_book_imbalance=Decimal(0),
+            microprice=None,
+        )
+
 
 __all__ = ["AdaptiveSignals"]
