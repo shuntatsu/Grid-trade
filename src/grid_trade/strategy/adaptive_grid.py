@@ -17,7 +17,11 @@ from grid_trade.strategy.dynamic_center import (
     DynamicCenterState,
     propose_dynamic_center,
 )
-from grid_trade.strategy.funding_bias import FundingBiasConfig, FundingBiasDecision, apply_funding_bias
+from grid_trade.strategy.funding_bias import (
+    FundingBiasConfig,
+    FundingBiasDecision,
+    apply_funding_bias,
+)
 from grid_trade.strategy.grid_geometry import ladder_economic_signature
 from grid_trade.strategy.inventory_target import (
     InventoryTargetConfig,
@@ -168,9 +172,7 @@ def _reference_pipeline(
     inventory: InventoryTargetDecision,
     config: AdaptiveGridPolicyConfig,
 ) -> tuple[Decimal, OrderBookReferenceDecision]:
-    inventory_reference = center * (
-        Decimal(1) + inventory.reservation_shift_bps / _BASIS_POINTS
-    )
+    inventory_reference = center * (Decimal(1) + inventory.reservation_shift_bps / _BASIS_POINTS)
     _require_finite_positive(inventory_reference, field="inventory_reference")
     order_book = decide_order_book_reference(
         center=inventory_reference,
@@ -264,7 +266,9 @@ def decide_adaptive_grid(
         generation=candidate_generation,
     )
     candidate_ladder = _build_state_ladder(candidate_state, config)
-    changed = ladder_economic_signature(candidate_ladder) != ladder_economic_signature(current_ladder)
+    changed = ladder_economic_signature(candidate_ladder) != ladder_economic_signature(
+        current_ladder
+    )
 
     if changed:
         effective_state = candidate_state
