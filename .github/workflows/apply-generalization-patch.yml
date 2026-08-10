@@ -1,0 +1,54 @@
+name: Temporary generalization patch runner
+
+on:
+  push:
+    branches:
+      - agent/generalize-strategy-core
+    paths:
+      - .github/patches/generalization.patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-generalization-patch-runner
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/generalize-strategy-core
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: python -m pip install uv==0.11.25
+      - name: Sync core development environment
+        run: uv sync --extra dev --frozen
+      - name: Apply and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --whitespace=error .github/patches/generalization.patch
+          rm .github/patches/generalization.patch
+          uv run --frozen --extra dev ruff format .
+          uv run --frozen --extra dev ruff check .
+          uv run --frozen --extra dev pytest -q \
+            --ignore=tests/research \
+            --ignore=tests/integrations
+          uv run --frozen --extra dev mypy src tests \
+            --exclude '^tests/(research|integrations)/'
+          git diff --check
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git commit -m "feat: advance strategy generality hardening"
+          git push origin HEAD:agent/generalize-strategy-core
