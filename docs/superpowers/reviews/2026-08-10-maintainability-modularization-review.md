@@ -2,7 +2,7 @@
 
 Date: 2026-08-10
 Branch: `agent/maintainability-modularization`
-Status: local implementation review complete; exact remote-head CI verification required
+Status: implementation and remote CI review complete; Draft PR awaits merge approval
 Production: **RESEARCH / NO-GO FOR PRODUCTION**
 
 ## Scope reviewed
@@ -184,25 +184,49 @@ New architecture gates enforce:
 
 Existing Core-layer and optional-runtime boundary tests remain intact and were not weakened.
 
-## Exact remote-head merge gates
+## Remote verification evidence
 
-Before this branch is mergeable, the exact final remote head must pass:
+Verified code-bearing head:
 
-1. dependency lock check;
-2. Ruff format and lint;
-3. all Core tests with Hypothesis installed;
-4. strict Core mypy;
-5. all Research/Integration tests with pinned runtimes;
-6. focused S1, S2, Adaptive, Microstructure, Calibrated Adaptive, and Tier-2 mypy checks;
-7. fresh-process equality for S0, S1, S2, Adaptive, Microstructure Calibration, Calibrated Adaptive, and Tier-2 Evidence digests.
+`8bfb10632b236e898cfbc2f6271904f56130fe1d`
 
-The review record will be amended with exact workflow/head evidence before completion is claimed.
+### Core CI #500 — PASS
+
+- Python: **3.12.13**
+- dependency lock: **PASS**
+- Ruff format: **167 files already formatted**
+- Ruff lint: **PASS**
+- non-Research / non-Integration tests: **351 passed**
+- strict mypy: **144 source files, 0 issues**
+
+### Research Integration #399 — PASS
+
+- pinned dependencies include `hftbacktest==2.4.4` and `nautilus-trader==1.230.0`
+- Research/Integration tests: **96 passed**
+- S1 focused mypy: **PASS**
+- S2 focused mypy: **PASS**
+- Adaptive focused mypy: **PASS**
+- Microstructure Calibration focused mypy: **PASS**
+- Calibrated Adaptive focused mypy: **PASS**
+- Tier-2 data/replay focused mypy: **53 source files, 0 issues**
+- fresh-process Evidence reproduction: **PASS** for all seven runners
+
+Pinned Evidence digests reproduced on the verified head:
+
+- S0: `e0c78118d43dad6c52589e450cbd39069c9cf7636f8eb64a56278573617bd467`
+- S1: `f02dfda885d997886dffbdf77cca457989c5cf34066c3febae3f0873d9ca7873`
+- S2: `9478000d146bee86cc39ddff6ff6d7627c19bc38e05e9ac6a5bfc835621aae22`
+- Adaptive S3-S7: `3af625539b90f53b0db34d3261f16669bd5618a6677bfa022a34df1f2b38d071`
+- Microstructure Calibration: `7e56c2e56b29c6ad15b2f5b2f8d6440169fad6bc7862f0085ccb5eb09a85e239`
+- Calibrated Adaptive: `709481dcab22d0f611d89a5690f8fb28f3cc7f2a238f0c80e6a0e67d93606f63`
+- Tier-2: `aa9ee7e90e845bb433d57eb3939667bd3b937fb623313f160d65420781f04bd9`
+
+This review-record amendment is documentation-only. Its successor branch head is required to pass the same Core and Research workflows before the PR is marked ready.
 
 ## Remaining risks
 
-- Strict mypy and Ruff could identify issues not observable in the constrained local environment.
-- Full hftbacktest execution and pinned Tier-2 Evidence reproduction require Research Integration CI.
 - File-to-package conversion is atomic at merge time; partial cherry-picking of deletion and package creation commits is unsupported.
+- Branch publication required temporary transport commits. The final tree contains no staging assets or temporary workflows, but **squash merge is required** to keep `main` history clean.
 - Structural modularity improves change isolation but does not validate strategy economics, profitability, or live operation.
 
 ## Scope purity
