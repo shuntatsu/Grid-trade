@@ -25,7 +25,11 @@ from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 from grid_trade.domain.risk import RiskLimits, RiskState
 from grid_trade.research.hftbacktest_adapter import HftReplayConfig
 from grid_trade.research.replay_attribution import MarketImpactEligibilityConfig
-from grid_trade.research.tier2_replay import Tier2ReplayManifest, run_tier2_replay
+from grid_trade.research.tier2_replay import (
+    Tier2ReplayManifest,
+    required_hourly_funding_timestamps,
+    run_tier2_replay,
+)
 
 pytestmark = pytest.mark.research
 
@@ -66,12 +70,14 @@ def _raw_objects() -> tuple[RawObjectRef, ...]:
 
 def _dataset_manifest(
     events: tuple[CanonicalEventEnvelope, ...],
-    acceptance: DatasetAcceptance = DatasetAcceptance.ACCEPTED,
+    acceptance: DatasetAcceptance | None = None,
 ) -> DatasetManifest:
     raw_objects = _raw_objects()
+    required_funding = required_hourly_funding_timestamps(events)
     report = audit_canonical_dataset(
         events,
         raw_objects=raw_objects,
+        required_funding_timestamps_ns=required_funding,
         expected_normalization_schema_version="canonical-v1",
     )
     return DatasetManifest(
@@ -80,9 +86,10 @@ def _dataset_manifest(
         normalization_schema_version="canonical-v1",
         ordering_schema_version="ordering-v1",
         audit_schema_version="audit-v1",
-        acceptance=acceptance,
+        acceptance=report.acceptance if acceptance is None else acceptance,
         created_at=datetime(2026, 8, 10, tzinfo=UTC),
         audit_digest=audit_report_digest(report),
+        required_funding_timestamps_ns=required_funding,
     )
 
 
@@ -172,7 +179,7 @@ def _candidate(*, price: str = "99.0", quantity: str = "0.01") -> PassiveOrderIn
 
 
 def _replay_manifest(
-    acceptance: DatasetAcceptance = DatasetAcceptance.ACCEPTED,
+    acceptance: DatasetAcceptance | None = None,
     *,
     events: tuple[CanonicalEventEnvelope, ...] | None = None,
 ) -> Tier2ReplayManifest:
@@ -291,10 +298,10 @@ def test_hourly_funding_uses_position_after_causal_fills() -> None:
     assert result.funding_pnl == Decimal("-0.001")
 
 
-def test_incomplete_exact_hour_funding_fails_closed() -> None:
+def test_incomplete_exact_hour_funding_fails_closed_at_dataset_promotion() -> None:
     events = (*_events(include_funding=False), _funding(funding_rate=None))
 
-    with pytest.raises(ValueError, match="funding_rate"):
+    with pytest.raises(ValueError, match="ACCEPTED"):
         run_tier2_replay(
             manifest=_replay_manifest(events=events),
             events=events,
@@ -307,7 +314,7 @@ def test_incomplete_exact_hour_funding_fails_closed() -> None:
 
 
 def test_non_hour_reference_observation_is_not_applied_as_funding() -> None:
-    events = (*_events(include_funding=False), _funding(_HOUR_NS + 1))
+    events = (*_events(include_funding=False), _funding(5_500_000_000))
 
     result = run_tier2_replay(
         manifest=_replay_manifest(events=events),
