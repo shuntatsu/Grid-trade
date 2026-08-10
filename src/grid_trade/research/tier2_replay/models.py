@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from grid_trade.datasets.manifest import DatasetManifest
+from grid_trade.domain.instrument import InstrumentSpec, require_instruments_compatible
 from grid_trade.domain.risk import RiskDecision
 from grid_trade.evidence.events import EvidenceEvent
 from grid_trade.research.replay_attribution import (
@@ -36,12 +37,31 @@ class Tier2ReplayManifest:
     hft: HftReplayConfig
     market_impact: MarketImpactEligibilityConfig
     synthetic_receive_latency_ns: int
+    instrument: InstrumentSpec | None = None
 
     def __post_init__(self) -> None:
         _require_non_empty(self.strategy_identity, field="strategy_identity")
         _require_non_empty(self.calibration_identity, field="calibration_identity")
         if self.synthetic_receive_latency_ns < 0:
             raise ValueError("synthetic_receive_latency_ns must be non-negative")
+        if self.instrument is None:
+            if self.hft.contract_multiplier != Decimal(1):
+                raise ValueError("non-unit hft contract_multiplier requires InstrumentSpec")
+            return
+
+        require_instruments_compatible(
+            self.dataset.instrument,
+            self.instrument.instrument_id,
+            context="Tier-2 dataset/spec",
+        )
+        if self.hft.tick_size != self.instrument.tick_size:
+            raise ValueError("hft tick_size must match InstrumentSpec")
+        if self.hft.lot_size != self.instrument.quantity_step:
+            raise ValueError("hft lot_size must match InstrumentSpec quantity_step")
+        if self.hft.contract_multiplier != self.instrument.contract_multiplier:
+            raise ValueError("hft contract_multiplier must match InstrumentSpec")
+        if self.instrument.funding_interval_seconds != 3_600:
+            raise ValueError("Tier-2 replay currently requires an hourly funding interval")
 
 
 @dataclass(frozen=True, slots=True)

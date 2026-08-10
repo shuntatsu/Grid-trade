@@ -16,7 +16,10 @@ from grid_trade.research.hftbacktest_adapter import (
     canonical_events_to_hftbacktest_fixture,
     replay_passive_orders,
 )
-from grid_trade.research.replay_attribution import summarize_order_liquidity
+from grid_trade.research.replay_attribution import (
+    maker_fee_cash_flow,
+    summarize_order_liquidity,
+)
 from grid_trade.research.tier2_replay.attribution import _funding_cash_flows
 from grid_trade.research.tier2_replay.dataset import (
     _market_snapshot,
@@ -106,6 +109,7 @@ def run_tier2_replay(
             book=initial_book,
             order=order,
             config=manifest.market_impact,
+            contract_multiplier=manifest.hft.contract_multiplier,
         )
         for order in risk_orders
     )
@@ -149,10 +153,19 @@ def run_tier2_replay(
         starting_position=starting_position,
         replay_summary=replay_summary,
         side_by_client_id=side_by_client_id,
+        contract_multiplier=manifest.hft.contract_multiplier,
     )
     funding_pnl = sum((flow.cash_flow for flow in funding_flows), Decimal(0))
-    maker_fee_cash_flow = -sum(
-        (fill.price * fill.quantity * manifest.hft.maker_fee for fill in replay_summary.fills),
+    maker_fee_total = sum(
+        (
+            maker_fee_cash_flow(
+                price=fill.price,
+                quantity=fill.quantity,
+                maker_fee_rate=manifest.hft.maker_fee,
+                contract_multiplier=manifest.hft.contract_multiplier,
+            )
+            for fill in replay_summary.fills
+        ),
         Decimal(0),
     )
     ending_position = starting_position + replay_summary.ending_position
@@ -192,7 +205,7 @@ def run_tier2_replay(
         converted_receive_mode=converted_receive_mode,
         replay_summary=replay_summary,
         funding_flows=funding_flows,
-        maker_fee_cash_flow=maker_fee_cash_flow,
+        maker_fee_cash_flow=maker_fee_total,
         ending_position=ending_position,
     )
 
@@ -209,7 +222,7 @@ def run_tier2_replay(
         replay_summary=replay_summary,
         funding_cash_flows=funding_flows,
         funding_pnl=funding_pnl,
-        maker_fee_cash_flow=maker_fee_cash_flow,
+        maker_fee_cash_flow=maker_fee_total,
         ending_position=ending_position,
     )
 
