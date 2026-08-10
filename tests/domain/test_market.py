@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 from hypothesis import given
@@ -25,6 +25,22 @@ def test_mid_is_exact_decimal_average() -> None:
     snapshot = _snapshot(best_bid=Decimal("99.99"), best_ask=Decimal("100.01"))
 
     assert snapshot.mid == Decimal("100.00")
+
+
+def test_mid_is_independent_of_ambient_decimal_precision() -> None:
+    snapshot = _snapshot(
+        best_bid=Decimal("1.23456789123456789"),
+        best_ask=Decimal("1.23456799123456789"),
+    )
+
+    with localcontext() as context:
+        context.prec = 10
+        low = snapshot.mid
+    with localcontext() as context:
+        context.prec = 50
+        high = snapshot.mid
+
+    assert low == high
 
 
 @pytest.mark.parametrize(
