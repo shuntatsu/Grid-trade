@@ -1,0 +1,88 @@
+diff --git a/src/grid_trade/strategy/__init__.py b/src/grid_trade/strategy/__init__.py
+index 2b4dfc8..b4e1fa3 100644
+--- a/src/grid_trade/strategy/__init__.py
++++ b/src/grid_trade/strategy/__init__.py
+@@ -16,6 +16,7 @@ from grid_trade.strategy.dynamic_center import (
+     initialize_dynamic_center,
+     propose_dynamic_center,
+ )
++from grid_trade.strategy.features import AdaptiveFeatures
+ from grid_trade.strategy.fixed_grid import build_fixed_long_grid
+ from grid_trade.strategy.grid_geometry import (
+     FixedLongGridConfig,
+@@ -36,6 +37,7 @@ from grid_trade.strategy.volatility_spacing import (
+ 
+ __all__ = [
+     "AdaptiveGridDecision",
++    "AdaptiveFeatures",
+     "AdaptiveGridPolicyConfig",
+     "AdaptiveGridState",
+     "AdaptiveStage",
+diff --git a/src/grid_trade/strategy/features.py b/src/grid_trade/strategy/features.py
+new file mode 100644
+index 0000000..96d8e69
+--- /dev/null
++++ b/src/grid_trade/strategy/features.py
+@@ -0,0 +1,37 @@
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveFeatures:
++    inventory_control: bool
++    partial_derisk: bool
++    conditional_reversal: bool
++    funding_bias: bool
++    order_book_reference: bool
++
++    def __post_init__(self) -> None:
++        for field_name in (
++            "inventory_control",
++            "partial_derisk",
++            "conditional_reversal",
++            "funding_bias",
++            "order_book_reference",
++        ):
++            if type(getattr(self, field_name)) is not bool:
++                raise ValueError(f"{field_name} must be a bool")
++
++    @classmethod
++    def from_stage(cls, stage: int) -> "AdaptiveFeatures":
++        stage_value = int(stage)
++        if not 3 <= stage_value <= 7:
++            raise ValueError("adaptive stage must be within [3, 7]")
++        return cls(
++            inventory_control=True,
++            partial_derisk=stage_value >= 4,
++            conditional_reversal=stage_value >= 5,
++            funding_bias=stage_value >= 6,
++            order_book_reference=stage_value >= 7,
++        )
++
++
++__all__ = ["AdaptiveFeatures"]
+diff --git a/tests/strategy/test_adaptive_feature_presets.py b/tests/strategy/test_adaptive_feature_presets.py
+new file mode 100644
+index 0000000..7258908
+--- /dev/null
++++ b/tests/strategy/test_adaptive_feature_presets.py
+@@ -0,0 +1,19 @@
++from grid_trade.strategy.adaptive_grid import AdaptiveStage
++from grid_trade.strategy.features import AdaptiveFeatures
++
++
++def test_stage_presets_preserve_historical_activation() -> None:
++    assert AdaptiveFeatures.from_stage(AdaptiveStage.S3_INVENTORY) == AdaptiveFeatures(
++        inventory_control=True,
++        partial_derisk=False,
++        conditional_reversal=False,
++        funding_bias=False,
++        order_book_reference=False,
++    )
++    assert AdaptiveFeatures.from_stage(AdaptiveStage.S7_ORDER_BOOK) == AdaptiveFeatures(
++        inventory_control=True,
++        partial_derisk=True,
++        conditional_reversal=True,
++        funding_bias=True,
++        order_book_reference=True,
++    )
