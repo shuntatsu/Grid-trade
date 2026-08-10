@@ -29,6 +29,11 @@ from grid_trade.strategy.s2_adaptive_grid import (
     decide_s2_grid,
     initialize_s2_grid,
 )
+from grid_trade.strategy.target_profile import (
+    DirectionalTargetProfileConfig,
+    apply_conditional_reversal,
+    apply_directional_de_risk,
+)
 from grid_trade.strategy.volatility_spacing import (
     SpacingDecision,
     VolatilitySpacingConfig,
@@ -44,6 +49,7 @@ __all__ = [
     "CenterDecision",
     "CenterDecisionReason",
     "CenterProposal",
+    "DirectionalTargetProfileConfig",
     "DynamicCenterConfig",
     "DynamicCenterState",
     "FixedLongGridConfig",
@@ -51,6 +57,8 @@ __all__ = [
     "S2GridState",
     "SpacingDecision",
     "VolatilitySpacingConfig",
+    "apply_conditional_reversal",
+    "apply_directional_de_risk",
     "build_fixed_long_grid",
     "build_long_grid_at_center",
     "decide_adaptive_grid",
