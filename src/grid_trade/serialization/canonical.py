@@ -20,10 +20,7 @@ def canonical_value(value: object) -> JSONValue:
             raise ValueError("datetime must be timezone-aware")
         return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
     if is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: canonical_value(getattr(value, field.name))
-            for field in fields(value)
-        }
+        return {field.name: canonical_value(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, tuple | list):
         return [canonical_value(item) for item in value]
     if isinstance(value, dict):
