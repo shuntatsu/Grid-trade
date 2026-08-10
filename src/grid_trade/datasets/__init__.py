@@ -1,6 +1,7 @@
 from grid_trade.datasets.audit import (
     AuditFinding,
     AuditSeverity,
+    DatasetAuditExpectations,
     DatasetAuditReport,
     audit_canonical_dataset,
     audit_report_digest,
@@ -45,6 +46,7 @@ __all__ = [
     "CanonicalPayload",
     "CanonicalTrade",
     "DatasetAcceptance",
+    "DatasetAuditExpectations",
     "DatasetAuditReport",
     "DatasetManifest",
     "DatasetType",
