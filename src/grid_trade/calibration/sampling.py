@@ -12,9 +12,9 @@ def _require_aware(value: datetime, *, field: str) -> None:
 def _elapsed_microseconds(start: datetime, end: datetime, *, field: str) -> int:
     _require_aware(start, field=f"{field} start")
     _require_aware(end, field=f"{field} end")
-    delta = end - start
-    if delta.total_seconds() < 0:
+    if end < start:
         raise ValueError(f"{field} end must not precede start")
+    delta = end - start
     return delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
 
 

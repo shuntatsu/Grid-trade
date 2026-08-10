@@ -316,6 +316,11 @@ def derive_tier2_calibrated_candidate(
             volatility_scale=volatility,
             max_margin_notional=config.max_margin_notional,
             venue_max_quantity=config.venue_max_quantity,
+            contract_multiplier=(
+                config.instrument.contract_multiplier
+                if config.instrument is not None
+                else Decimal(1)
+            ),
         ),
         config.risk_sizing,
     )

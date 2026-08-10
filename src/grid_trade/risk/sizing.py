@@ -40,6 +40,7 @@ class RiskSizingInput:
     volatility_scale: Decimal
     max_margin_notional: Decimal
     venue_max_quantity: Decimal
+    contract_multiplier: Decimal = Decimal(1)
 
     def __post_init__(self) -> None:
         _require_finite_positive(self.equity, field="equity")
@@ -47,6 +48,7 @@ class RiskSizingInput:
         _require_finite_non_negative(self.volatility_scale, field="volatility_scale")
         _require_finite_positive(self.max_margin_notional, field="max_margin_notional")
         _require_finite_positive(self.venue_max_quantity, field="venue_max_quantity")
+        _require_finite_positive(self.contract_multiplier, field="contract_multiplier")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,13 +74,12 @@ def derive_inventory_capacity(
     config: RiskSizingConfig,
 ) -> InventoryCapacity:
     with deterministic_decimal_context():
-        q_notional = inputs.equity * config.max_notional_fraction / inputs.reference_price
-        q_margin = inputs.max_margin_notional / inputs.reference_price
+        unit_notional = inputs.reference_price * inputs.contract_multiplier
+        q_notional = inputs.equity * config.max_notional_fraction / unit_notional
+        q_margin = inputs.max_margin_notional / unit_notional
         volatility = max(inputs.volatility_scale, config.volatility_floor)
         q_volatility = (
-            inputs.equity
-            * config.max_single_move_loss_fraction
-            / (inputs.reference_price * volatility)
+            inputs.equity * config.max_single_move_loss_fraction / (unit_notional * volatility)
         )
     q_venue = inputs.venue_max_quantity
 

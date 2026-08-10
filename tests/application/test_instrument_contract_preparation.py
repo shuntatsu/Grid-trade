@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from grid_trade.application.calibrated_adaptive import (
+    CalibratedAdaptiveInputs,
     CalibratedAdaptiveMetaConfig,
     VenueGridConstraints,
     initialize_calibrated_adaptive_grid,
@@ -18,6 +19,7 @@ from grid_trade.domain.instrument import ContractType, InstrumentSpec
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.risk.sizing import InventoryCapacity
 from grid_trade.strategy.adaptive_grid import AdaptiveStage
+from grid_trade.strategy.adaptive_signals import AdaptiveSignals
 from grid_trade.strategy.features import AdaptiveFeatures
 
 _NOW = dt.datetime(2026, 8, 10, tzinfo=dt.UTC)
@@ -182,3 +184,29 @@ def test_explicit_instrument_binds_and_validates_candidate_orders() -> None:
     assert orders
     assert all(order.instrument_id == spec.instrument_id for order in orders)
     assert all(spec.is_executable(order.quantity, order.price) for order in orders)
+
+
+def test_calibrated_inputs_reject_snapshot_and_policy_instrument_mismatch() -> None:
+    prepared = prepare_calibrated_adaptive_inputs(
+        snapshot=_snapshot(),
+        calibrated=_market(),
+        capacity=_capacity(),
+        meta=_meta(),
+        venue=VenueGridConstraints.from_instrument(_instrument()),
+        features=_features(),
+        instrument=_instrument(),
+    )
+    assert prepared.inputs is not None
+
+    with pytest.raises(ValueError, match="calibrated inputs instrument mismatch"):
+        CalibratedAdaptiveInputs(
+            snapshot=_snapshot("ETH-PERP"),
+            signals=AdaptiveSignals(
+                trend_score=Decimal("0"),
+                funding_rate=Decimal("0"),
+                order_book_imbalance=Decimal("0"),
+                microprice=None,
+            ),
+            policy_config=prepared.inputs.policy_config,
+            effective_q_max=prepared.inputs.effective_q_max,
+        )

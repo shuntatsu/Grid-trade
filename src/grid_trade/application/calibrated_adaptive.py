@@ -175,6 +175,11 @@ class CalibratedAdaptiveInputs:
         _require_positive(self.effective_q_max, field="effective_q_max")
         if self.policy_config.ladder.max_abs_inventory != self.effective_q_max:
             raise ValueError("policy inventory cap must equal effective_q_max")
+        require_instruments_compatible(
+            self.snapshot.instrument_id,
+            self.policy_config.ladder.instrument_id,
+            context="calibrated inputs",
+        )
 
 
 @dataclass(frozen=True, slots=True)

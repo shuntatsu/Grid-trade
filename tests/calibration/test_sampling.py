@@ -21,7 +21,7 @@ from grid_trade.calibration.microstructure_contracts import (
 )
 from grid_trade.calibration.microstructure_engine import MicrostructureCalibrationConfig
 from grid_trade.calibration.order_flow import OfiImpactConfig
-from grid_trade.calibration.sampling import SamplingSpec
+from grid_trade.calibration.sampling import SamplingSpec, _elapsed_microseconds
 from grid_trade.calibration.trend import TrendCalibrationConfig
 from grid_trade.calibration.universal_engine import (
     UniversalCalibrationConfig,
@@ -188,4 +188,13 @@ def test_universal_engine_rejects_wrong_matured_label_horizon() -> None:
             maker_fee_rate=Decimal("0.0001"),
             tick_size=Decimal("0.01"),
             config=config,
+        )
+
+
+def test_elapsed_microseconds_rejects_negative_interval_without_float_conversion() -> None:
+    with pytest.raises(ValueError, match="end must not precede start"):
+        _elapsed_microseconds(
+            _BASE + dt.timedelta(milliseconds=5_000),
+            _BASE,
+            field="fixture horizon",
         )

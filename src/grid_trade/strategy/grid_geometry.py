@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
 
-from grid_trade.domain.instrument import LEGACY_UNSPECIFIED_INSTRUMENT
+from grid_trade.domain.instrument import (
+    LEGACY_UNSPECIFIED_INSTRUMENT,
+    InstrumentSpec,
+    require_instruments_compatible,
+)
 from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 
 _BASIS_POINTS = Decimal(10_000)
@@ -19,6 +23,7 @@ class FixedLongGridConfig:
     order_quantity: Decimal
     tick_size: Decimal
     instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
+    instrument: InstrumentSpec | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.levels <= 50:
@@ -29,6 +34,20 @@ class FixedLongGridConfig:
         _require_finite_positive(self.tick_size, field="tick_size")
         if not self.instrument_id.strip():
             raise ValueError("instrument_id must be non-empty")
+        if self.instrument is not None:
+            require_instruments_compatible(
+                self.instrument_id,
+                self.instrument.instrument_id,
+                context="fixed-grid config",
+            )
+            if self.tick_size != self.instrument.tick_size:
+                raise ValueError("fixed-grid tick_size must match InstrumentSpec")
+            if self.order_quantity != self.instrument.floor_quantity(self.order_quantity):
+                raise ValueError("fixed-grid order_quantity must align to instrument quantity_step")
+            if self.order_quantity > self.instrument.max_quantity:
+                raise ValueError(
+                    "fixed-grid order_quantity must not exceed instrument max_quantity"
+                )
 
 
 def _round_down_to_tick(price: Decimal, tick_size: Decimal) -> Decimal:
@@ -60,6 +79,12 @@ def build_long_grid_at_center(
             raise ValueError("grid level must remain strictly positive after tick rounding")
         if previous_price is not None and price >= previous_price:
             raise ValueError("grid levels must remain strictly descending after tick rounding")
+        previous_price = price
+        if config.instrument is not None and not config.instrument.is_executable(
+            config.order_quantity,
+            price,
+        ):
+            continue
 
         namespace = (
             ""
@@ -78,7 +103,6 @@ def build_long_grid_at_center(
                 instrument_id=config.instrument_id,
             ),
         )
-        previous_price = price
 
     return tuple(orders)
 

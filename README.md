@@ -29,6 +29,29 @@ Research sequence:
 
 Every stage remains independently ablatable. Complexity that does not improve robust walk-forward/OOS results is intended to be removed.
 
+## Generality boundary
+
+The reusable core is deliberately narrower than a universal trading framework.
+
+- Only linear perpetual contracts are supported. `InstrumentSpec` makes the contract
+  multiplier, tick size, quantity step, minimum quantity, minimum notional, maximum
+  quantity, and funding cadence explicit. Unsupported contract types fail closed.
+- Runtime ownership remains one strategy and calibration state per explicit instrument.
+  Instrument identity is carried by snapshots, strategy state, candidate orders, working
+  orders, fills, Risk assessment, reconciliation, and Tier-2 replay.
+- InstrumentSpec and SamplingSpec are required for generalized historical evaluation.
+  Sampling cadence, volatility/trend elapsed-time windows, and matured markout/OFI horizons
+  are validated rather than inferred from observation counts.
+- AdaptiveStage is a compatibility and reporting preset. Independent `AdaptiveFeatures`
+  select inventory control, partial de-risking, conditional reversal, funding bias, and
+  order-book reference without requiring ordinal S3–S7 activation.
+- Long bias is the default compatibility profile, not a core invariant. An explicit
+  `DirectionalTargetProfileConfig` can use a long, flat, or short signed baseline while the
+  same flat-before-reverse and Hard Risk contracts remain authoritative. Explicit profiles
+  override the compatibility baseline/opposite-target fractions.
+- Portfolio allocation and cross-instrument netting remain out of scope, as do inverse
+  perpetuals, spot, dated futures, options, and multi-currency collateral.
+
 ## S0 — deterministic fixed-grid foundation
 
 The initial foundation provides:
@@ -85,7 +108,9 @@ Important mechanics:
 
 ## S3–S7 — adaptive inventory, defense, short, funding, and order-book mechanics
 
-The adaptive policy is staged by `AdaptiveStage`, so S3 through S7 can be enabled independently on the same causal fixture.
+The controlled research fixtures use `AdaptiveStage` as S3–S7 presets. Runtime policy uses
+independent `AdaptiveFeatures`, so each mechanism can be ablated without inheriting every
+earlier stage.
 
 ### S3 — Inventory Target and Skew
 
@@ -192,7 +217,7 @@ The checked-in microstructure calibration research runner is a **deterministic s
 Phase C adds a separate calibrated Application path while retaining the checked-in S0–S7 controlled fixture path unchanged for deterministic regression. The new path:
 
 - composes Foundation and Microstructure calibration with exact timestamp/source/instrument/mid consistency;
-- derives executable inventory capacity from `grid_trade.risk.sizing` and only rounds `Q_max` downward to the venue quantity step;
+- derives executable inventory capacity from `grid_trade.risk.sizing`, including the linear contract multiplier, and only rounds `Q_max` downward to the venue quantity step;
 - derives center thresholds, spacing limits, reservation skew, and order-book shift from volatility units rather than symbol-specific basis-point constants;
 - combines the volatility floor, GLFT quote-distance estimate, and calibrated execution/adverse-selection cost when deriving spacing;
 - consumes normalized funding with unit scale and normalized order-book/OFI state without symbol-specific divisors;
