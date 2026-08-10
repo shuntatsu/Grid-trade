@@ -163,7 +163,9 @@ def _bind_audited_events(
     report = audit_canonical_dataset(
         events,
         raw_objects=dataset.raw_objects,
+        required_funding_timestamps_ns=dataset.required_funding_timestamps_ns,
         expected_normalization_schema_version=dataset.normalization_schema_version,
+        expectations=dataset.audit_expectations,
     )
     if report.acceptance is not dataset.acceptance:
         raise ValueError("canonical event acceptance does not match DatasetManifest")
