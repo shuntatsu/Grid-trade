@@ -1,7 +1,11 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from grid_trade.datasets.audit import DatasetAuditExpectations, audit_canonical_dataset, audit_report_digest
+from grid_trade.datasets.audit import (
+    DatasetAuditExpectations,
+    audit_canonical_dataset,
+    audit_report_digest,
+)
 from grid_trade.datasets.canonical import (
     CanonicalBookLevel,
     CanonicalBookSnapshot,
@@ -38,7 +42,13 @@ def _raw(dataset_type: DatasetType, digest: str) -> RawObjectRef:
     )
 
 
-def _book(timestamp_ns: int, *, bid: str = "99.0", ask: str = "101.0", ordinal: int = 0):
+def _book(
+    timestamp_ns: int,
+    *,
+    bid: str = "99.0",
+    ask: str = "101.0",
+    ordinal: int = 0,
+) -> CanonicalEventEnvelope:
     return CanonicalEventEnvelope(
         event_type=CanonicalEventType.BOOK_SNAPSHOT,
         instrument="BTC",
@@ -55,7 +65,13 @@ def _book(timestamp_ns: int, *, bid: str = "99.0", ask: str = "101.0", ordinal: 
     )
 
 
-def _trade(timestamp_ns: int, *, price: str = "100.0", quantity: str = "0.25", ordinal: int = 0):
+def _trade(
+    timestamp_ns: int,
+    *,
+    price: str = "100.0",
+    quantity: str = "0.25",
+    ordinal: int = 0,
+) -> CanonicalEventEnvelope:
     return CanonicalEventEnvelope(
         event_type=CanonicalEventType.TRADE,
         instrument="BTC",
@@ -85,7 +101,11 @@ def test_requested_coverage_is_bound_to_audit_and_missing_tail_is_rejected() -> 
     events = (_book(100), _trade(150), _book(200, ordinal=1))
     expectations = DatasetAuditExpectations(requested_start_ns=100, requested_end_ns=300)
 
-    report = audit_canonical_dataset(events, raw_objects=_raw_objects(), expectations=expectations)
+    report = audit_canonical_dataset(
+        events,
+        raw_objects=_raw_objects(),
+        expectations=expectations,
+    )
 
     assert report.acceptance is DatasetAcceptance.REJECTED
     assert report.requested_start_ns == 100
@@ -102,7 +122,11 @@ def test_declared_tick_and_lot_alignment_fail_closed() -> None:
         lot_size=Decimal("0.01"),
     )
 
-    report = audit_canonical_dataset(events, raw_objects=_raw_objects(), expectations=expectations)
+    report = audit_canonical_dataset(
+        events,
+        raw_objects=_raw_objects(),
+        expectations=expectations,
+    )
 
     assert report.acceptance is DatasetAcceptance.REJECTED
     assert any(finding.code == "tick_alignment_violation" for finding in report.findings)
@@ -144,7 +168,10 @@ def test_gap_statistics_are_deterministic_and_part_of_audit_identity() -> None:
     changed_expectation = audit_canonical_dataset(
         events,
         raw_objects=_raw_objects(),
-        expectations=DatasetAuditExpectations(requested_start_ns=100, requested_end_ns=410),
+        expectations=DatasetAuditExpectations(
+            requested_start_ns=100,
+            requested_end_ns=410,
+        ),
     )
 
     assert report.max_exchange_gap_ns == 200
