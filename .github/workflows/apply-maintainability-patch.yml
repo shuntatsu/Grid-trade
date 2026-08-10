@@ -23,25 +23,39 @@ jobs:
           ref: agent/maintainability-modularization
           fetch-depth: 0
 
-      - name: Apply verified patch
+      - name: Verify staged patch
         shell: bash
         run: |
           set -euo pipefail
 
-          cat .maintainability-patch/chunk-* > /tmp/maintainability.patch.gz.b64
-          test "$(sha256sum /tmp/maintainability.patch.gz.b64 | cut -d' ' -f1)" = \
-            "fe17a868e2b1bbd51c1774cff17867dcb0f7de9d1fe5b94f0ebe82e2b7639bda"
+          cat .maintainability-patch-xz/part-* > /tmp/maintainability.patch.xz.b64
+          actual_base64_sha=$(sha256sum /tmp/maintainability.patch.xz.b64 | cut -d' ' -f1)
+          echo "base64 sha256: ${actual_base64_sha}"
+          test "${actual_base64_sha}" = \
+            "ec9a997bf6b6188a9968c072ada757e661b959e8f455096bdeedcc48308658b9"
 
-          base64 --decode /tmp/maintainability.patch.gz.b64 > /tmp/maintainability.patch.gz
-          test "$(sha256sum /tmp/maintainability.patch.gz | cut -d' ' -f1)" = \
-            "d0659f1fa075c3acbb6a08e15e0b6d31b984f147295490ffe2716f11bf95abb6"
+          base64 --decode /tmp/maintainability.patch.xz.b64 > /tmp/maintainability.patch.xz
+          actual_xz_sha=$(sha256sum /tmp/maintainability.patch.xz | cut -d' ' -f1)
+          echo "xz sha256: ${actual_xz_sha}"
+          test "${actual_xz_sha}" = \
+            "529a0b434797fa1056757021bdf81906a4595bceeb970da63642affc8b2a52e5"
 
-          gzip --decompress --stdout /tmp/maintainability.patch.gz > /tmp/maintainability.patch
-          test "$(sha256sum /tmp/maintainability.patch | cut -d' ' -f1)" = \
+          xz --decompress --stdout /tmp/maintainability.patch.xz > /tmp/maintainability.patch
+          actual_patch_sha=$(sha256sum /tmp/maintainability.patch | cut -d' ' -f1)
+          echo "patch sha256: ${actual_patch_sha}"
+          test "${actual_patch_sha}" = \
             "481fa96765cdd18bc814e58957bc01d9c97878995c5d132e1ac520513d0cd22b"
 
+          git apply --check /tmp/maintainability.patch
+
+      - name: Apply patch and remove staging
+        shell: bash
+        run: |
+          set -euo pipefail
+
           git apply --index /tmp/maintainability.patch
-          git rm -r .maintainability-patch
+          git rm -r .maintainability-patch .maintainability-patch-xz
+          git diff --cached --check
 
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
