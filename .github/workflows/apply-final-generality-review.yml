@@ -17,81 +17,80 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
           ref: agent/generalize-strategy-core
           fetch-depth: 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: final-generality-parts
-          path: .github/patches/final-generality
-          if-no-files-found: error
-          retention-days: 1
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install uv
         run: python -m pip install uv==0.11.25
-      - name: Validate and apply final reviewed patch
+      - name: Validate and apply reviewed patch
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from __future__ import annotations
-
-          import base64
-          import binascii
-          from pathlib import Path
-
-          alphabet = set(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
-          encoded_parts: list[bytes] = []
-
-          for part in sorted(Path(".github/patches/final-generality").glob("part*.b64")):
-              raw = part.read_bytes()
-              compact = b"".join(raw.split())
-              invalid = sorted(set(compact) - alphabet)
-              print(
-                  f"{part.name}: raw={len(raw)} compact={len(compact)} "
-                  f"invalid={invalid}"
-              )
-              if invalid:
-                  raise SystemExit(f"{part.name}: contains non-Base64 bytes: {invalid}")
-              encoded_parts.append(compact)
-
-          encoded = b"".join(encoded_parts)
-          print(f"combined: length={len(encoded)} mod4={len(encoded) % 4}")
-          try:
-              decoded = base64.b64decode(encoded, validate=True)
-          except binascii.Error as error:
-              raise SystemExit(f"combined Base64 is invalid: {error}") from error
-          Path("/tmp/final-generality.patch").write_bytes(decoded)
-          PY
-          git apply --check --whitespace=error /tmp/final-generality.patch
-          git apply --whitespace=error /tmp/final-generality.patch
-          rm -rf .github/patches/final-generality
-          rm .github/workflows/apply-final-generality-review.yml
+          parts=(
+            .github/patches/final-clean/part00
+            .github/patches/final-clean/part01
+            .github/patches/final-clean/part02
+            .github/patches/final-clean/part03
+            .github/patches/final-clean/part04
+            .github/patches/final-clean/part05
+            .github/patches/final-clean/part06
+            .github/patches/final-clean/part07
+          )
+          sizes=(3000 3000 3000 3000 3000 3000 3000 2327)
+          hashes=(
+            7fae0043420bc547bc3f5b12993edfafa5a4b694d69b49c96b336751980ee65e
+            12846b6e6bd150ed73d9f1ece9856af89f025c2aad5247ce067b75dfc42e68e6
+            149d0f9d4465f7b0b5f21b060e66bcbb5ce2e9652b665319c337855c59673645
+            406ea282900c38d1d79edb0bc37f1d5234af8437b9b93eadc468d99c116e0d88
+            d5b1156c13be9beaa0659afb0b148787a3d16879645d539c8da6319cd4095710
+            0780c7fd9ffb90d68d83f099dce4abf9356da6b692e044484ced16a7aed53e0f
+            4a52c6ff1b8f00c019a1fb7a2ce2d1a05671cbe15ab41ed43ff838a2bd28052f
+            c297689215ee2c55b9e87d516e5f80c03af2766c24208c1f7496f72e931972e6
+          )
+          : > /tmp/final-review.patch
+          for index in "${!parts[@]}"; do
+            part="${parts[$index]}"
+            actual_size="$(wc -c < "$part" | tr -d ' ')"
+            test "$actual_size" = "${sizes[$index]}"
+            echo "${hashes[$index]}  $part" | sha256sum -c -
+            cat "$part" >> /tmp/final-review.patch
+          done
+          test "$(wc -c < /tmp/final-review.patch | tr -d ' ')" = "23327"
+          echo "dffdfc1b1a094fc5d5e5d9c0a81aef1141820e3b062bd0e77cdf4d3935119a21  /tmp/final-review.patch" | sha256sum -c -
+          git apply --check --whitespace=error /tmp/final-review.patch
+          git apply --whitespace=error /tmp/final-review.patch
+          rm -rf .github/patches/final-clean .github/patches/final-generality
+          rm -f .github/workflows/apply-final-generality-review.yml
+          rm -f .github/workflows/export-generalization-source.yml
       - name: Verify dependency lock and environments
         shell: bash
         run: |
           set -euo pipefail
           uv lock --check
           uv sync --extra dev --extra research --frozen
-      - name: Verify formatting and lint
+      - name: Verify formatting, lint, and patch hygiene
         shell: bash
         run: |
           set -euo pipefail
           uv run --frozen --extra dev ruff format --check --diff .
           uv run --frozen --extra dev ruff check .
           git diff --check
-      - name: Verify Core
+      - name: Verify core contracts
         shell: bash
         run: |
           set -euo pipefail
-          uv run --frozen --extra dev pytest -q --ignore=tests/research --ignore=tests/integrations
-          uv run --frozen --extra dev mypy src tests --exclude '^tests/(research|integrations)/'
-      - name: Verify Research and integrations
+          uv run --frozen --extra dev pytest -q \
+            --ignore=tests/research \
+            --ignore=tests/integrations
+          uv run --frozen --extra dev mypy src tests \
+            --exclude '^tests/(research|integrations)/'
+      - name: Verify research and integrations
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +118,7 @@ jobs:
             tests/research/test_tier2_replay.py \
             tests/research/test_tier2_replay_determinism.py \
             tests/research/test_tier2_visibility_boundary.py
-      - name: Commit verified review fixes and remove temporary assets
+      - name: Commit verified review fixes
         shell: bash
         run: |
           set -euo pipefail

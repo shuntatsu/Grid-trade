@@ -1,0 +1,54 @@
+nventory capacity from `grid_trade.risk.sizing`, including the linear contract multiplier, and only rounds `Q_max` downward to the venue quantity step;
+ - derives center thresholds, spacing limits, reservation skew, and order-book shift from volatility units rather than symbol-specific basis-point constants;
+ - combines the volatility floor, GLFT quote-distance estimate, and calibrated execution/adverse-selection cost when deriving spacing;
+ - consumes normalized funding with unit scale and normalized order-book/OFI state without symbol-specific divisors;
+diff --git a/src/grid_trade/application/calibrated_adaptive.py b/src/grid_trade/application/calibrated_adaptive.py
+index 62f4846..9ce3a30 100644
+--- a/src/grid_trade/application/calibrated_adaptive.py
++++ b/src/grid_trade/application/calibrated_adaptive.py
+@@ -175,6 +175,11 @@ class CalibratedAdaptiveInputs:
+         _require_positive(self.effective_q_max, field="effective_q_max")
+         if self.policy_config.ladder.max_abs_inventory != self.effective_q_max:
+             raise ValueError("policy inventory cap must equal effective_q_max")
++        require_instruments_compatible(
++            self.snapshot.instrument_id,
++            self.policy_config.ladder.instrument_id,
++            context="calibrated inputs",
++        )
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+diff --git a/src/grid_trade/calibration/sampling.py b/src/grid_trade/calibration/sampling.py
+index 2082396..b9b3669 100644
+--- a/src/grid_trade/calibration/sampling.py
++++ b/src/grid_trade/calibration/sampling.py
+@@ -12,9 +12,9 @@ def _require_aware(value: datetime, *, field: str) -> None:
+ def _elapsed_microseconds(start: datetime, end: datetime, *, field: str) -> int:
+     _require_aware(start, field=f"{field} start")
+     _require_aware(end, field=f"{field} end")
+-    delta = end - start
+-    if delta.total_seconds() < 0:
++    if end < start:
+         raise ValueError(f"{field} end must not precede start")
++    delta = end - start
+     return delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
+ 
+ 
+diff --git a/src/grid_trade/research/adaptive_runner.py b/src/grid_trade/research/adaptive_runner.py
+index c474bc0..f155abc 100644
+--- a/src/grid_trade/research/adaptive_runner.py
++++ b/src/grid_trade/research/adaptive_runner.py
+@@ -113,6 +113,7 @@ def _working_orders(ladder: tuple[PassiveOrderIntent, ...]) -> tuple[WorkingOrde
+             quantity=order.quantity,
+             filled_quantity=Decimal(0),
+             reduce_only=order.reduce_only,
++            instrument_id=order.instrument_id,
+         )
+         for order in ladder
+     )
+diff --git a/src/grid_trade/research/calibrated_adaptive_runner.py b/src/grid_trade/research/calibrated_adaptive_runner.py
+index 8671539..8a6e009 100644
+--- a/src/grid_trade/research/calibrated_adaptive_runner.py
++++ b/src/grid_trade/research/calibrated_adaptive_runner.py
+@@ -230,6 +230,7 @@ def _working(ladder: tuple[PassiveOrderIntent, ...]) -> tuple[WorkingOrder, ...]
+    
