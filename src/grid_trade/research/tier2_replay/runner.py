@@ -17,7 +17,7 @@ from grid_trade.research.hftbacktest_adapter import (
     replay_passive_orders,
 )
 from grid_trade.research.replay_attribution import (
-    maker_fee_cash_flow as calculate_maker_fee_cash_flow,
+    maker_fee_cash_flow,
     summarize_order_liquidity,
 )
 from grid_trade.research.tier2_replay.attribution import _funding_cash_flows
@@ -156,9 +156,9 @@ def run_tier2_replay(
         contract_multiplier=manifest.hft.contract_multiplier,
     )
     funding_pnl = sum((flow.cash_flow for flow in funding_flows), Decimal(0))
-    maker_fee_cash_flow = sum(
+    maker_fee_total = sum(
         (
-            calculate_maker_fee_cash_flow(
+            maker_fee_cash_flow(
                 price=fill.price,
                 quantity=fill.quantity,
                 maker_fee_rate=manifest.hft.maker_fee,
@@ -205,7 +205,7 @@ def run_tier2_replay(
         converted_receive_mode=converted_receive_mode,
         replay_summary=replay_summary,
         funding_flows=funding_flows,
-        maker_fee_cash_flow=maker_fee_cash_flow,
+        maker_fee_cash_flow=maker_fee_total,
         ending_position=ending_position,
     )
 
@@ -222,7 +222,7 @@ def run_tier2_replay(
         replay_summary=replay_summary,
         funding_cash_flows=funding_flows,
         funding_pnl=funding_pnl,
-        maker_fee_cash_flow=maker_fee_cash_flow,
+        maker_fee_cash_flow=maker_fee_total,
         ending_position=ending_position,
     )
 
