@@ -61,6 +61,7 @@ class HftReplayConfig:
     response_latency_ns: int = 0
     maker_fee: Decimal = Decimal(0)
     taker_fee: Decimal = Decimal(0)
+    contract_multiplier: Decimal = Decimal(1)
 
     def __post_init__(self) -> None:
         _require_finite_positive(self.tick_size, field="tick_size")
@@ -71,6 +72,7 @@ class HftReplayConfig:
             raise ValueError("response_latency_ns must be non-negative")
         _require_finite(self.maker_fee, field="maker_fee")
         _require_finite(self.taker_fee, field="taker_fee")
+        _require_finite_positive(self.contract_multiplier, field="contract_multiplier")
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,7 +458,7 @@ def replay_passive_orders(
         hft.BacktestAsset()
         .data(feed)
         .initial_snapshot(snapshot)
-        .linear_asset(1.0)
+        .linear_asset(float(config.contract_multiplier))
         .constant_order_latency(config.entry_latency_ns, config.response_latency_ns)
         .risk_adverse_queue_model()
         .partial_fill_exchange()
