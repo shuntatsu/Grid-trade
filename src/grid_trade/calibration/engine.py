@@ -14,6 +14,7 @@ from grid_trade.calibration.funding import (
     FundingEstimate,
     update_funding_calibration,
 )
+from grid_trade.calibration.sampling import SamplingSpec
 from grid_trade.calibration.trend import (
     TrendCalibrationConfig,
     TrendEstimate,
@@ -32,6 +33,14 @@ class CalibrationEngineConfig:
     volatility: RobustVolatilityConfig
     trend: TrendCalibrationConfig
     funding: FundingCalibrationConfig
+    sampling: SamplingSpec | None = None
+
+    def __post_init__(self) -> None:
+        if self.sampling is not None:
+            self.sampling.validate_engine_counts(
+                volatility_window=self.volatility.window,
+                trend_horizon=self.trend.horizon,
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,8 +168,14 @@ def _validate_observation_sequence(
     observation: CalibrationObservation,
     config: CalibrationEngineConfig,
 ) -> None:
-    if state.last_timestamp is not None and observation.timestamp <= state.last_timestamp:
-        raise ValueError("observation timestamp must be strictly newer than last_timestamp")
+    if state.last_timestamp is not None:
+        if observation.timestamp <= state.last_timestamp:
+            raise ValueError("observation timestamp must be strictly newer than last_timestamp")
+        if config.sampling is not None:
+            config.sampling.validate_observation_delta(
+                state.last_timestamp,
+                observation.timestamp,
+            )
     if state.source_id is not None and observation.source_id != state.source_id:
         raise ValueError("source_id must remain constant within one calibration state")
     if state.instrument_id is not None and observation.instrument_id != state.instrument_id:

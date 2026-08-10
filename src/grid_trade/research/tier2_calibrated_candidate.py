@@ -30,6 +30,10 @@ from grid_trade.datasets.canonical import (
 )
 from grid_trade.datasets.contracts import DatasetAcceptance
 from grid_trade.datasets.manifest import DatasetManifest
+from grid_trade.domain.instrument import (
+    InstrumentSpec,
+    require_instruments_compatible,
+)
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
 from grid_trade.risk.sizing import (
@@ -85,11 +89,18 @@ class Tier2CalibratedCandidateConfig:
     maker_fee_rate: Decimal
     max_margin_notional: Decimal
     venue_max_quantity: Decimal
+    instrument: InstrumentSpec | None = None
 
     def __post_init__(self) -> None:
         _require_finite(self.maker_fee_rate, field="maker_fee_rate")
         _require_positive(self.max_margin_notional, field="max_margin_notional")
         _require_positive(self.venue_max_quantity, field="venue_max_quantity")
+        if self.instrument is not None:
+            self.venue.require_matches(self.instrument)
+            if self.universal.foundation.sampling is None:
+                raise ValueError("explicit instrument Tier-2 candidate requires SamplingSpec")
+            if self.venue_max_quantity > self.instrument.max_quantity:
+                raise ValueError("venue_max_quantity must not exceed InstrumentSpec max_quantity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +208,7 @@ def _book_context(
         realized_volatility=Decimal(0),
         position_quantity=Decimal(0),
         source_id=source_id,
+        instrument_id=event.instrument,
     )
     return observation, top, snapshot
 
@@ -225,6 +237,12 @@ def derive_tier2_calibrated_candidate(
     )
     if not causal_events:
         raise ValueError("no canonical events are available at the decision timestamp")
+    if config.instrument is not None:
+        require_instruments_compatible(
+            dataset.instrument,
+            config.instrument.instrument_id,
+            context="dataset/spec",
+        )
 
     frames = tuple(
         frame for frame in evidence_frames if frame.as_of_timestamp_ns <= decision_exchange_ts_ns
@@ -298,6 +316,11 @@ def derive_tier2_calibrated_candidate(
             volatility_scale=volatility,
             max_margin_notional=config.max_margin_notional,
             venue_max_quantity=config.venue_max_quantity,
+            contract_multiplier=(
+                config.instrument.contract_multiplier
+                if config.instrument is not None
+                else Decimal(1)
+            ),
         ),
         config.risk_sizing,
     )
@@ -308,6 +331,7 @@ def derive_tier2_calibrated_candidate(
         realized_volatility=final_snapshot.realized_volatility,
         position_quantity=starting_position,
         source_id=final_snapshot.source_id,
+        instrument_id=final_snapshot.instrument_id,
     )
     preparation = prepare_calibrated_adaptive_inputs(
         snapshot=positioned_snapshot,
@@ -315,6 +339,7 @@ def derive_tier2_calibrated_candidate(
         capacity=capacity,
         meta=config.adaptive_meta,
         venue=config.venue,
+        instrument=config.instrument,
     )
     if preparation.inputs is None:
         raise ValueError(f"calibrated adaptive candidate is not ready: {preparation.reason}")

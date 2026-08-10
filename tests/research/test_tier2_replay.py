@@ -167,7 +167,12 @@ def _events(*, include_funding: bool = True) -> tuple[CanonicalEventEnvelope, ..
     return events
 
 
-def _candidate(*, price: str = "99.0", quantity: str = "0.01") -> PassiveOrderIntent:
+def _candidate(
+    *,
+    price: str = "99.0",
+    quantity: str = "0.01",
+    instrument_id: str = "UNSPECIFIED",
+) -> PassiveOrderIntent:
     return PassiveOrderIntent(
         client_order_id="tier2:g0:buy:l0",
         generation=0,
@@ -175,6 +180,7 @@ def _candidate(*, price: str = "99.0", quantity: str = "0.01") -> PassiveOrderIn
         side=OrderSide.BUY,
         price=Decimal(price),
         quantity=Decimal(quantity),
+        instrument_id=instrument_id,
     )
 
 
@@ -232,6 +238,19 @@ def test_non_accepted_dataset_cannot_enter_promoting_replay(
             manifest=_replay_manifest(acceptance),
             events=_events(),
             candidate_orders=(_candidate(),),
+            risk_limits=_risk_limits(),
+            risk_state=_risk_state(),
+            starting_position=Decimal(0),
+            realized_volatility=Decimal("0.01"),
+        )
+
+
+def test_explicit_candidate_from_another_instrument_fails_closed() -> None:
+    with pytest.raises(ValueError, match="Tier-2 candidate/dataset instrument mismatch"):
+        run_tier2_replay(
+            manifest=_replay_manifest(),
+            events=_events(),
+            candidate_orders=(_candidate(instrument_id="ETH"),),
             risk_limits=_risk_limits(),
             risk_state=_risk_state(),
             starting_position=Decimal(0),

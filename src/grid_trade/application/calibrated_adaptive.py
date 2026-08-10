@@ -7,6 +7,12 @@ from grid_trade.application.passive_policy import (
     transition_passive_policy,
 )
 from grid_trade.calibration.contracts import CalibratedMarketState
+from grid_trade.domain.instrument import (
+    LEGACY_UNSPECIFIED_INSTRUMENT,
+    InstrumentSpec,
+    require_explicit_instrument,
+    require_instruments_compatible,
+)
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.numeric import deterministic_decimal_context
 from grid_trade.domain.orders import PassiveOrderIntent, WorkingOrder
@@ -25,9 +31,11 @@ from grid_trade.strategy.adaptive_signals import AdaptiveSignals
 from grid_trade.strategy.conditional_short import ShortOverlayConfig
 from grid_trade.strategy.de_risk import DeRiskConfig
 from grid_trade.strategy.dynamic_center import DynamicCenterConfig
+from grid_trade.strategy.features import AdaptiveFeatures
 from grid_trade.strategy.funding_bias import FundingBiasConfig
 from grid_trade.strategy.inventory_target import InventoryTargetConfig
 from grid_trade.strategy.order_book_reference import OrderBookReferenceConfig
+from grid_trade.strategy.target_profile import DirectionalTargetProfileConfig
 from grid_trade.strategy.volatility_spacing import VolatilitySpacingConfig
 
 _BASIS_POINTS = Decimal(10_000)
@@ -67,6 +75,19 @@ class VenueGridConstraints:
     def __post_init__(self) -> None:
         _require_positive(self.tick_size, field="tick_size")
         _require_positive(self.quantity_step, field="quantity_step")
+
+    @classmethod
+    def from_instrument(cls, instrument: InstrumentSpec) -> "VenueGridConstraints":
+        return cls(
+            tick_size=instrument.tick_size,
+            quantity_step=instrument.quantity_step,
+        )
+
+    def require_matches(self, instrument: InstrumentSpec) -> None:
+        if self.tick_size != instrument.tick_size:
+            raise ValueError("venue tick_size must match InstrumentSpec")
+        if self.quantity_step != instrument.quantity_step:
+            raise ValueError("venue quantity_step must match InstrumentSpec")
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +175,11 @@ class CalibratedAdaptiveInputs:
         _require_positive(self.effective_q_max, field="effective_q_max")
         if self.policy_config.ladder.max_abs_inventory != self.effective_q_max:
             raise ValueError("policy inventory cap must equal effective_q_max")
+        require_instruments_compatible(
+            self.snapshot.instrument_id,
+            self.policy_config.ladder.instrument_id,
+            context="calibrated inputs",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,16 +208,35 @@ CalibratedAdaptiveTransition = PassivePolicyTransition[
 def _require_matching_market_context(
     snapshot: MarketSnapshot,
     calibrated: CalibratedMarketState,
+    instrument: InstrumentSpec | None,
 ) -> None:
     if snapshot.timestamp != calibrated.timestamp:
         raise ValueError("snapshot and calibrated timestamp must match")
     if snapshot.source_id != calibrated.source_id:
         raise ValueError("snapshot and calibrated source_id must match")
+    if snapshot.instrument_id != LEGACY_UNSPECIFIED_INSTRUMENT:
+        require_instruments_compatible(
+            snapshot.instrument_id,
+            calibrated.instrument_id,
+            context="snapshot/calibration",
+        )
+    if instrument is not None:
+        require_explicit_instrument(snapshot.instrument_id, context="calibrated strategy")
+        require_instruments_compatible(
+            snapshot.instrument_id,
+            instrument.instrument_id,
+            context="snapshot/spec",
+        )
+        require_instruments_compatible(
+            calibrated.instrument_id,
+            instrument.instrument_id,
+            context="calibration/spec",
+        )
 
 
 def _readiness_reason(
     calibrated: CalibratedMarketState,
-    stage: AdaptiveStage,
+    features: AdaptiveFeatures,
 ) -> str | None:
     if (
         not calibrated.volatility_status.ready
@@ -208,11 +253,11 @@ def _readiness_reason(
         or calibrated.execution_cost_floor is None
     ):
         return "microstructure_not_ready"
-    if stage >= AdaptiveStage.S6_FUNDING and (
+    if features.funding_bias and (
         not calibrated.funding_status.ready or calibrated.funding_score is None
     ):
         return "funding_not_ready"
-    if stage >= AdaptiveStage.S7_ORDER_BOOK and (
+    if features.order_book_reference and (
         calibrated.order_book_score is None or calibrated.estimated_microprice_displacement is None
     ):
         return "order_book_not_ready"
@@ -226,9 +271,17 @@ def prepare_calibrated_adaptive_inputs(
     capacity: InventoryCapacity,
     meta: CalibratedAdaptiveMetaConfig,
     venue: VenueGridConstraints,
+    features: AdaptiveFeatures | None = None,
+    target_profile: DirectionalTargetProfileConfig | None = None,
+    instrument: InstrumentSpec | None = None,
 ) -> CalibratedAdaptivePreparation:
-    _require_matching_market_context(snapshot, calibrated)
-    unavailable_reason = _readiness_reason(calibrated, meta.stage)
+    _require_matching_market_context(snapshot, calibrated, instrument)
+    if instrument is not None:
+        venue.require_matches(instrument)
+        if capacity.q_venue > instrument.max_quantity:
+            raise ValueError("capacity venue quantity must not exceed InstrumentSpec max_quantity")
+    active_features = features or AdaptiveFeatures.from_stage(meta.stage)
+    unavailable_reason = _readiness_reason(calibrated, active_features)
     if unavailable_reason is not None:
         return CalibratedAdaptivePreparation(inputs=None, reason=unavailable_reason)
 
@@ -240,26 +293,31 @@ def prepare_calibrated_adaptive_inputs(
         raise AssertionError("readiness validation must guarantee calibrated values")
 
     with deterministic_decimal_context():
-        effective_q_max = _floor_quantity(capacity.q_max, venue.quantity_step)
+        effective_q_max = (
+            instrument.floor_quantity(capacity.q_max)
+            if instrument is not None
+            else _floor_quantity(capacity.q_max, venue.quantity_step)
+        )
         if effective_q_max <= 0:
             return CalibratedAdaptivePreparation(
                 inputs=None,
                 reason="inventory_capacity_not_executable",
             )
 
-        base_long_target = _floor_quantity(
-            effective_q_max * meta.base_long_fraction,
-            venue.quantity_step,
+        floor_quantity = (
+            instrument.floor_quantity
+            if instrument is not None
+            else lambda value: _floor_quantity(value, venue.quantity_step)
         )
-        max_short_target = _floor_quantity(
-            effective_q_max * meta.max_short_fraction,
-            venue.quantity_step,
-        )
-        order_quantity = _floor_quantity(
-            effective_q_max * meta.level_quantity_fraction,
-            venue.quantity_step,
-        )
+        base_long_target = floor_quantity(effective_q_max * meta.base_long_fraction)
+        max_short_target = floor_quantity(effective_q_max * meta.max_short_fraction)
+        order_quantity = floor_quantity(effective_q_max * meta.level_quantity_fraction)
         if max_short_target <= 0 or order_quantity <= 0:
+            return CalibratedAdaptivePreparation(
+                inputs=None,
+                reason="inventory_capacity_not_executable",
+            )
+        if instrument is not None and not instrument.is_executable(order_quantity, snapshot.mid):
             return CalibratedAdaptivePreparation(
                 inputs=None,
                 reason="inventory_capacity_not_executable",
@@ -286,14 +344,12 @@ def prepare_calibrated_adaptive_inputs(
         reservation_skew_bps = volatility * meta.reservation_skew_vol_units * _BASIS_POINTS
         order_book_shift_bps = volatility * meta.order_book_shift_vol_units * _BASIS_POINTS
 
-        funding_signal = (
-            calibrated.funding_score if meta.stage >= AdaptiveStage.S6_FUNDING else _ZERO
-        )
+        funding_signal = calibrated.funding_score if active_features.funding_bias else _ZERO
         order_book_signal = (
-            calibrated.order_book_score if meta.stage >= AdaptiveStage.S7_ORDER_BOOK else _ZERO
+            calibrated.order_book_score if active_features.order_book_reference else _ZERO
         )
         microprice: Decimal | None = None
-        if meta.stage >= AdaptiveStage.S7_ORDER_BOOK:
+        if active_features.order_book_reference:
             displacement = calibrated.estimated_microprice_displacement
             if displacement is None or order_book_signal is None:
                 raise AssertionError("S7 readiness must guarantee order-book outputs")
@@ -327,6 +383,8 @@ def prepare_calibrated_adaptive_inputs(
             order_quantity=order_quantity,
             tick_size=venue.tick_size,
             max_abs_inventory=effective_q_max,
+            instrument_id=snapshot.instrument_id,
+            instrument=instrument,
         ),
         inventory=InventoryTargetConfig(
             base_long_target=base_long_target,
@@ -354,6 +412,8 @@ def prepare_calibrated_adaptive_inputs(
             imbalance_shift_bps=order_book_shift_bps,
         ),
         stage=meta.stage,
+        features=active_features,
+        target_profile=target_profile,
     )
     return CalibratedAdaptivePreparation(
         inputs=CalibratedAdaptiveInputs(

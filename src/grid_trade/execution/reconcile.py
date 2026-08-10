@@ -16,7 +16,8 @@ def _require_unique_ids(items: Iterable[object], *, label: str) -> None:
 
 def _matches(desired: PassiveOrderIntent, working: WorkingOrder) -> bool:
     return (
-        desired.client_order_id == working.client_order_id
+        desired.instrument_id == working.instrument_id
+        and desired.client_order_id == working.client_order_id
         and desired.generation == working.generation
         and desired.level == working.level
         and desired.side is working.side

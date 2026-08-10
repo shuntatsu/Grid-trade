@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 
+from grid_trade.domain.instrument import require_instruments_compatible
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent, ReconciliationPlan, WorkingOrder
 from grid_trade.domain.risk import RiskDecision, RiskLimits, RiskState
@@ -17,6 +18,26 @@ class PassivePolicyTransition[StateT, DecisionT]:
     risk_decision: RiskDecision
     reconciliation: ReconciliationPlan
     candidate_accepted: bool
+
+
+def _validate_order_instruments(
+    *,
+    snapshot: MarketSnapshot,
+    working_orders: tuple[WorkingOrder, ...],
+    proposed_ladder: tuple[PassiveOrderIntent, ...],
+) -> None:
+    for working_order in working_orders:
+        require_instruments_compatible(
+            snapshot.instrument_id,
+            working_order.instrument_id,
+            context="working order",
+        )
+    for proposed_order in proposed_ladder:
+        require_instruments_compatible(
+            snapshot.instrument_id,
+            proposed_order.instrument_id,
+            context="proposed order",
+        )
 
 
 def _prospective_risk_state(
@@ -98,6 +119,11 @@ def transition_passive_policy[StateT, DecisionT](
     working_orders: tuple[WorkingOrder, ...],
     proposed_ladder: tuple[PassiveOrderIntent, ...],
 ) -> PassivePolicyTransition[StateT, DecisionT]:
+    _validate_order_instruments(
+        snapshot=snapshot,
+        working_orders=working_orders,
+        proposed_ladder=proposed_ladder,
+    )
     risk_decision, filtered_ladder = _assess_desired_ladder(
         snapshot=snapshot,
         risk_limits=risk_limits,
@@ -137,6 +163,11 @@ def continue_passive_policy_reconciliation[StateT, DecisionT](
     working_orders: tuple[WorkingOrder, ...],
 ) -> PassivePolicyTransition[StateT, DecisionT]:
     """Advance one accepted policy decision without evaluating policy again."""
+    _validate_order_instruments(
+        snapshot=snapshot,
+        working_orders=working_orders,
+        proposed_ladder=transition.desired_ladder,
+    )
     risk_decision, filtered_ladder = _assess_desired_ladder(
         snapshot=snapshot,
         risk_limits=risk_limits,

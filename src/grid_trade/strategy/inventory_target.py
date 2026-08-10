@@ -69,13 +69,24 @@ def decide_inventory_target(
     position: Decimal,
     target: Decimal,
     config: InventoryTargetConfig,
+    enabled: bool = True,
 ) -> InventoryTargetDecision:
     _require_finite(position, field="position")
     _require_finite(target, field="target")
     if abs(target) > config.max_abs_target:
         raise ValueError("target must be within max_abs_target")
+    if type(enabled) is not bool:
+        raise ValueError("enabled must be a bool")
 
     normalized_error = (position - target) / config.max_abs_target
+    if not enabled:
+        return InventoryTargetDecision(
+            target=target,
+            normalized_inventory_error=normalized_error,
+            reservation_shift_bps=_ZERO,
+            bid_scale=_ONE,
+            ask_scale=_ONE,
+        )
     clipped_error = _clip(normalized_error, -_ONE, _ONE)
     reservation_shift = -config.reservation_skew_bps * clipped_error
 

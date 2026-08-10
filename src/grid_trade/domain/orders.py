@@ -3,6 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
+from grid_trade.domain.instrument import LEGACY_UNSPECIFIED_INSTRUMENT
+
 
 def _require_positive_decimal(value: Decimal, *, field: str) -> None:
     if not value.is_finite() or value <= 0:
@@ -33,10 +35,13 @@ class PassiveOrderIntent:
     price: Decimal
     quantity: Decimal
     reduce_only: bool = False
+    instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
 
     def __post_init__(self) -> None:
         if not self.client_order_id.strip():
             raise ValueError("client_order_id must be non-empty")
+        if not self.instrument_id.strip():
+            raise ValueError("instrument_id must be non-empty")
         if self.generation < 0:
             raise ValueError("generation must be non-negative")
         if self.level < 0:
@@ -55,10 +60,13 @@ class WorkingOrder:
     quantity: Decimal
     filled_quantity: Decimal
     reduce_only: bool = False
+    instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
 
     def __post_init__(self) -> None:
         if not self.client_order_id.strip():
             raise ValueError("client_order_id must be non-empty")
+        if not self.instrument_id.strip():
+            raise ValueError("instrument_id must be non-empty")
         if self.generation < 0:
             raise ValueError("generation must be non-negative")
         if self.level < 0:
@@ -81,10 +89,13 @@ class FillEvent:
     timestamp: datetime
     price: Decimal
     quantity: Decimal
+    instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
 
     def __post_init__(self) -> None:
         if not self.client_order_id.strip():
             raise ValueError("client_order_id must be non-empty")
+        if not self.instrument_id.strip():
+            raise ValueError("instrument_id must be non-empty")
         _require_aware_timestamp(self.timestamp)
         _require_positive_decimal(self.price, field="price")
         _require_positive_decimal(self.quantity, field="quantity")

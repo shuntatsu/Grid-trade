@@ -181,3 +181,58 @@ def test_research_ci_type_checks_tier2_package() -> None:
 def test_research_ci_runs_for_canonical_serialization_changes() -> None:
     workflow = Path(".github/workflows/research.yml").read_text(encoding="utf-8")
     assert workflow.count('"src/grid_trade/serialization/**"') == 2
+
+
+def test_strategy_generality_public_contracts_are_exported() -> None:
+    from grid_trade.calibration import SamplingSpec
+    from grid_trade.domain import ContractType, InstrumentSpec
+    from grid_trade.strategy import AdaptiveFeatures, DirectionalTargetProfileConfig
+
+    assert all(
+        value is not None
+        for value in (
+            AdaptiveFeatures,
+            ContractType,
+            DirectionalTargetProfileConfig,
+            InstrumentSpec,
+            SamplingSpec,
+        )
+    )
+
+
+def test_generality_contract_modules_keep_narrow_dependencies() -> None:
+    allowed_prefixes = {
+        _SRC / "domain" / "instrument.py": ("grid_trade.domain",),
+        _SRC / "calibration" / "sampling.py": ("grid_trade.calibration",),
+        _SRC / "strategy" / "features.py": (),
+        _SRC / "strategy" / "target_profile.py": ("grid_trade.strategy",),
+    }
+    violations = [
+        f"{path}: {imported}"
+        for path, allowed in allowed_prefixes.items()
+        for imported in _imports(path)
+        if imported.startswith("grid_trade") and not imported.startswith(allowed)
+    ]
+
+    assert violations == []
+
+
+def test_adaptive_feature_activation_does_not_depend_on_stage_ordering() -> None:
+    source = (_SRC / "strategy" / "adaptive_grid.py").read_text(encoding="utf-8")
+
+    assert "stage >= AdaptiveStage" not in source
+    assert "stage > AdaptiveStage" not in source
+
+
+def test_readme_declares_generality_scope_and_compatibility_profile() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    for statement in (
+        "Only linear perpetual contracts are supported",
+        "one strategy and calibration state per explicit instrument",
+        "AdaptiveStage is a compatibility and reporting preset",
+        "Long bias is the default compatibility profile, not a core invariant",
+        "InstrumentSpec and SamplingSpec are required for generalized historical evaluation",
+        "Portfolio allocation and cross-instrument netting remain out of scope",
+    ):
+        assert statement in readme

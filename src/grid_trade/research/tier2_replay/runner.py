@@ -1,8 +1,13 @@
+from dataclasses import replace
 from decimal import Decimal
 
 from grid_trade.application.passive_policy import transition_passive_policy
 from grid_trade.datasets.audit import require_promoting_dataset
 from grid_trade.datasets.canonical import CanonicalBookSnapshot, CanonicalEventEnvelope
+from grid_trade.domain.instrument import (
+    LEGACY_UNSPECIFIED_INSTRUMENT,
+    require_instruments_compatible,
+)
 from grid_trade.domain.orders import PassiveOrderIntent
 from grid_trade.domain.risk import RiskLimits, RiskState
 from grid_trade.evidence.ledger import evidence_digest as compute_evidence_digest
@@ -34,6 +39,24 @@ from grid_trade.research.tier2_replay.models import (
 )
 
 
+def _bind_candidate_orders(
+    manifest: Tier2ReplayManifest,
+    candidate_orders: tuple[PassiveOrderIntent, ...],
+) -> tuple[PassiveOrderIntent, ...]:
+    bound: list[PassiveOrderIntent] = []
+    for order in candidate_orders:
+        if order.instrument_id == LEGACY_UNSPECIFIED_INSTRUMENT:
+            bound.append(replace(order, instrument_id=manifest.dataset.instrument))
+            continue
+        require_instruments_compatible(
+            manifest.dataset.instrument,
+            order.instrument_id,
+            context="Tier-2 candidate/dataset",
+        )
+        bound.append(order)
+    return tuple(bound)
+
+
 def run_tier2_replay(
     *,
     manifest: Tier2ReplayManifest,
@@ -45,6 +68,7 @@ def run_tier2_replay(
     realized_volatility: Decimal,
 ) -> Tier2ReplayResult:
     require_promoting_dataset(manifest.dataset)
+    candidate_orders = _bind_candidate_orders(manifest, candidate_orders)
     _require_finite(starting_position, field="starting_position")
     _require_finite(realized_volatility, field="realized_volatility")
     if realized_volatility < 0:

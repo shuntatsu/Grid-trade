@@ -23,6 +23,7 @@ def _input(
     volatility: str = "0.02",
     max_margin_notional: str = "1000",
     venue_max_quantity: str = "100",
+    contract_multiplier: str = "1",
 ) -> RiskSizingInput:
     return RiskSizingInput(
         equity=Decimal("1000"),
@@ -30,6 +31,7 @@ def _input(
         volatility_scale=Decimal(volatility),
         max_margin_notional=Decimal(max_margin_notional),
         venue_max_quantity=Decimal(venue_max_quantity),
+        contract_multiplier=Decimal(contract_multiplier),
     )
 
 
@@ -40,6 +42,15 @@ def test_quantity_capacity_scales_inverse_to_price() -> None:
     assert high.q_notional == low.q_notional / 2
     assert high.q_margin == low.q_margin / 2
     assert high.q_volatility == low.q_volatility / 2
+
+
+def test_quantity_capacity_scales_inverse_to_contract_multiplier() -> None:
+    unit = derive_inventory_capacity(_input(contract_multiplier="1"), _config())
+    tenfold = derive_inventory_capacity(_input(contract_multiplier="10"), _config())
+
+    assert tenfold.q_notional == unit.q_notional / 10
+    assert tenfold.q_margin == unit.q_margin / 10
+    assert tenfold.q_volatility == unit.q_volatility / 10
 
 
 def test_sizing_is_independent_of_ambient_decimal_precision() -> None:
@@ -91,6 +102,7 @@ def test_qmax_never_exceeds_any_component() -> None:
         ("volatility_scale", Decimal("-0.1")),
         ("max_margin_notional", Decimal("0")),
         ("venue_max_quantity", Decimal("0")),
+        ("contract_multiplier", Decimal("0")),
     ],
 )
 def test_invalid_sizing_inputs_fail_closed(field: str, value: Decimal) -> None:
@@ -100,6 +112,7 @@ def test_invalid_sizing_inputs_fail_closed(field: str, value: Decimal) -> None:
         "volatility_scale": Decimal("0.02"),
         "max_margin_notional": Decimal("1000"),
         "venue_max_quantity": Decimal("100"),
+        "contract_multiplier": Decimal("1"),
     }
     values[field] = value
     with pytest.raises(ValueError, match=field):

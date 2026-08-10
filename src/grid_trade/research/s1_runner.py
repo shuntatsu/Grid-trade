@@ -87,6 +87,7 @@ def _working_orders(
             quantity=order.quantity,
             filled_quantity=Decimal(0),
             reduce_only=order.reduce_only,
+            instrument_id=order.instrument_id,
         )
         for order in ladder
     )
