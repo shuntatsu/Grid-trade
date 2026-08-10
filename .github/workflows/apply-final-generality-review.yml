@@ -40,8 +40,7 @@ jobs:
           from pathlib import Path
 
           alphabet = set(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
-          output = Path("/tmp/final-generality.patch")
-          output.write_bytes(b"")
+          encoded_parts: list[bytes] = []
 
           for part in sorted(Path(".github/patches/final-generality").glob("part*.b64")):
               raw = part.read_bytes()
@@ -49,14 +48,19 @@ jobs:
               invalid = sorted(set(compact) - alphabet)
               print(
                   f"{part.name}: raw={len(raw)} compact={len(compact)} "
-                  f"mod4={len(compact) % 4} invalid={invalid}"
+                  f"invalid={invalid}"
               )
-              try:
-                  decoded = base64.b64decode(compact, validate=True)
-              except binascii.Error as error:
-                  raise SystemExit(f"{part.name}: invalid Base64: {error}") from error
-              with output.open("ab") as stream:
-                  stream.write(decoded)
+              if invalid:
+                  raise SystemExit(f"{part.name}: contains non-Base64 bytes: {invalid}")
+              encoded_parts.append(compact)
+
+          encoded = b"".join(encoded_parts)
+          print(f"combined: length={len(encoded)} mod4={len(encoded) % 4}")
+          try:
+              decoded = base64.b64decode(encoded, validate=True)
+          except binascii.Error as error:
+              raise SystemExit(f"combined Base64 is invalid: {error}") from error
+          Path("/tmp/final-generality.patch").write_bytes(decoded)
           PY
           git apply --check --whitespace=error /tmp/final-generality.patch
           git apply --whitespace=error /tmp/final-generality.patch
