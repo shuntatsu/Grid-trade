@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from decimal import Decimal
 from enum import Enum, StrEnum
 from hashlib import sha256
@@ -53,7 +53,7 @@ class DatasetAuditReport:
     event_count: int
     exact_duplicate_count: int
     conflicting_duplicate_count: int
-    expectations: DatasetAuditExpectations = DatasetAuditExpectations()
+    expectations: DatasetAuditExpectations = field(default_factory=DatasetAuditExpectations)
     observed_start_ns: int | None = None
     observed_end_ns: int | None = None
     book_start_ns: int | None = None
