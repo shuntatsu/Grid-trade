@@ -126,8 +126,10 @@ jobs:
           tests/research/test_hftbacktest_pinned_limitations.py
           tests/research/test_replay_attribution.py
           tests/research/test_replay_visibility_attribution.py
+          tests/research/test_tier2_audit_policy_propagation.py
           tests/research/test_tier2_calibrated_candidate.py
           tests/research/test_tier2_causality.py
+          tests/research/test_tier2_funding_completeness.py
           tests/research/test_tier2_replay.py
           tests/research/test_tier2_replay_determinism.py
           tests/research/test_tier2_visibility_boundary.py
