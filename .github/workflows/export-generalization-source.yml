@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Refresh artifact after completing the directional-profile slice.
+          # Refresh artifact for the final architecture and contract review.
           git archive --format=tar.gz --output=/tmp/grid-trade-generalization.tar.gz HEAD
       - uses: actions/upload-artifact@v4
         with:
