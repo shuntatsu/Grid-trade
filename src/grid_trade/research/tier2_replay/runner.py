@@ -18,8 +18,8 @@ from grid_trade.research.hftbacktest_adapter import (
 )
 from grid_trade.research.replay_attribution import (
     maker_fee_cash_flow as calculate_maker_fee_cash_flow,
+    summarize_order_liquidity,
 )
-from grid_trade.research.replay_attribution import summarize_order_liquidity
 from grid_trade.research.tier2_replay.attribution import _funding_cash_flows
 from grid_trade.research.tier2_replay.dataset import (
     _market_snapshot,
