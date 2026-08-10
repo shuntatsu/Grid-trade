@@ -229,12 +229,6 @@ def derive_tier2_calibrated_candidate(
 ) -> Tier2CalibratedCandidateResult:
     _require_positive(equity, field="equity")
     _require_finite(starting_position, field="starting_position")
-    if config.instrument is not None:
-        require_instruments_compatible(
-            dataset.instrument,
-            config.instrument.instrument_id,
-            context="dataset/spec",
-        )
     _validate_frames(evidence_frames)
     accepted_events = _bind_audited_events(dataset, events)
 
@@ -243,6 +237,12 @@ def derive_tier2_calibrated_candidate(
     )
     if not causal_events:
         raise ValueError("no canonical events are available at the decision timestamp")
+    if config.instrument is not None:
+        require_instruments_compatible(
+            dataset.instrument,
+            config.instrument.instrument_id,
+            context="dataset/spec",
+        )
 
     frames = tuple(
         frame for frame in evidence_frames if frame.as_of_timestamp_ns <= decision_exchange_ts_ns

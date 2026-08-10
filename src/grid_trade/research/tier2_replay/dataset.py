@@ -111,6 +111,7 @@ def _market_snapshot(
         realized_volatility=realized_volatility,
         position_quantity=starting_position,
         source_id=f"tier2:{manifest.dataset.audit_digest}",
+        instrument_id=manifest.dataset.instrument,
     )
 
 
