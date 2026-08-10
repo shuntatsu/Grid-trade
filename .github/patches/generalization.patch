@@ -1,0 +1,51 @@
+diff --git a/src/grid_trade/execution/reconcile.py b/src/grid_trade/execution/reconcile.py
+index 2becda1..0bedc1a 100644
+--- a/src/grid_trade/execution/reconcile.py
++++ b/src/grid_trade/execution/reconcile.py
+@@ -16,7 +16,8 @@ def _require_unique_ids(items: Iterable[object], *, label: str) -> None:
+ 
+ def _matches(desired: PassiveOrderIntent, working: WorkingOrder) -> bool:
+     return (
+-        desired.client_order_id == working.client_order_id
++        desired.instrument_id == working.instrument_id
++        and desired.client_order_id == working.client_order_id
+         and desired.generation == working.generation
+         and desired.level == working.level
+         and desired.side is working.side
+diff --git a/tests/execution/test_reconcile_instrument.py b/tests/execution/test_reconcile_instrument.py
+new file mode 100644
+index 0000000..7e3aaf8
+--- /dev/null
++++ b/tests/execution/test_reconcile_instrument.py
+@@ -0,0 +1,31 @@
++from decimal import Decimal
++
++from grid_trade.domain.orders import OrderSide, PassiveOrderIntent, ReconciliationPlan, WorkingOrder
++from grid_trade.execution.reconcile import reconcile_passive_orders
++
++
++def test_instrument_identity_is_part_of_reconciliation_match() -> None:
++    desired = PassiveOrderIntent(
++        client_order_id="same-id",
++        generation=0,
++        level=1,
++        side=OrderSide.BUY,
++        price=Decimal("98"),
++        quantity=Decimal("0.01"),
++        instrument_id="BTC-PERP",
++    )
++    working = WorkingOrder(
++        client_order_id="same-id",
++        generation=0,
++        level=1,
++        side=OrderSide.BUY,
++        price=Decimal("98"),
++        quantity=Decimal("0.01"),
++        filled_quantity=Decimal("0"),
++        instrument_id="ETH-PERP",
++    )
++
++    assert reconcile_passive_orders(desired=(desired,), working=(working,)) == ReconciliationPlan(
++        cancel=("same-id",),
++        submit=(),
++    )
