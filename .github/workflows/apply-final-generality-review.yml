@@ -23,6 +23,12 @@ jobs:
         with:
           ref: agent/generalize-strategy-core
           fetch-depth: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-generality-parts
+          path: .github/patches/final-generality
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
