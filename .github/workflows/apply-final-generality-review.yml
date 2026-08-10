@@ -1,0 +1,95 @@
+name: Temporary final generality review
+
+on:
+  push:
+    branches:
+      - agent/generalize-strategy-core
+    paths:
+      - .github/workflows/apply-final-generality-review.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-final-generality-review
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/generalize-strategy-core
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: python -m pip install uv==0.11.25
+      - name: Apply final reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/patches/final-generality/part*.b64 > /tmp/final-generality.patch.b64
+          base64 --decode /tmp/final-generality.patch.b64 > /tmp/final-generality.patch
+          git apply --whitespace=error /tmp/final-generality.patch
+          rm -rf .github/patches/final-generality
+          rm .github/workflows/apply-final-generality-review.yml
+      - name: Verify dependency lock and environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --extra dev --extra research --frozen
+      - name: Verify formatting and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --extra dev ruff format --check --diff .
+          uv run --frozen --extra dev ruff check .
+          git diff --check
+      - name: Verify Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --extra dev pytest -q --ignore=tests/research --ignore=tests/integrations
+          uv run --frozen --extra dev mypy src tests --exclude '^tests/(research|integrations)/'
+      - name: Verify Research and integrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --extra dev --extra research pytest -m research -q \
+            tests/research tests/integrations
+          uv run --frozen --extra dev --extra research mypy \
+            src/grid_trade/datasets \
+            src/grid_trade/integrations/hyperliquid \
+            src/grid_trade/research/hftbacktest_adapter.py \
+            src/grid_trade/research/replay_attribution.py \
+            src/grid_trade/research/tier2_calibrated_candidate.py \
+            src/grid_trade/research/tier2_calibrated_replay.py \
+            src/grid_trade/research/tier2_replay \
+            src/grid_trade/research/tier2_fixture_runner.py \
+            tests/datasets \
+            tests/integrations/hyperliquid \
+            tests/research/test_canonical_hftbacktest_adapter.py \
+            tests/research/test_hftbacktest_pinned_limitations.py \
+            tests/research/test_replay_attribution.py \
+            tests/research/test_replay_visibility_attribution.py \
+            tests/research/test_tier2_audit_policy_propagation.py \
+            tests/research/test_tier2_calibrated_candidate.py \
+            tests/research/test_tier2_causality.py \
+            tests/research/test_tier2_funding_completeness.py \
+            tests/research/test_tier2_replay.py \
+            tests/research/test_tier2_replay_determinism.py \
+            tests/research/test_tier2_visibility_boundary.py
+      - name: Commit verified review fixes and remove temporary assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git commit -m "fix: complete strategy generality contracts"
+          git push origin HEAD:agent/generalize-strategy-core
