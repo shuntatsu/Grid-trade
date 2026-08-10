@@ -51,6 +51,7 @@ def _funding_cash_flows(
     starting_position: Decimal,
     replay_summary: ReplaySummary,
     side_by_client_id: dict[str, OrderSide],
+    contract_multiplier: Decimal = Decimal(1),
 ) -> tuple[FundingCashFlow, ...]:
     flows: list[FundingCashFlow] = []
     for event in events:
@@ -72,6 +73,7 @@ def _funding_cash_flows(
                 timestamp_ns=event.exchange_ts_ns,
                 position=position,
                 reference=reference,
+                contract_multiplier=contract_multiplier,
             )
         )
     return tuple(flows)
