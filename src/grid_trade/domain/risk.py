@@ -19,6 +19,7 @@ class RiskReason(StrEnum):
     DRAWDOWN_BREACH = "drawdown_breach"
     MAX_OPEN_ORDERS = "max_open_orders"
     MAX_POSITION = "max_position"
+    INVALID_REDUCE_ONLY = "invalid_reduce_only"
 
 
 @dataclass(frozen=True, slots=True)
