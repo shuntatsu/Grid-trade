@@ -22,6 +22,7 @@ from grid_trade.strategy.dynamic_center import (
     DynamicCenterState,
     propose_dynamic_center,
 )
+from grid_trade.strategy.features import AdaptiveFeatures
 from grid_trade.strategy.funding_bias import (
     FundingBiasConfig,
     FundingBiasDecision,
@@ -76,6 +77,7 @@ class AdaptiveGridPolicyConfig:
     funding: FundingBiasConfig
     order_book: OrderBookReferenceConfig
     stage: AdaptiveStage = AdaptiveStage.S7_ORDER_BOOK
+    features: AdaptiveFeatures | None = None
 
     def __post_init__(self) -> None:
         if self.inventory.max_abs_target != self.ladder.max_abs_inventory:
@@ -84,6 +86,12 @@ class AdaptiveGridPolicyConfig:
             raise ValueError("funding and ladder inventory caps must match")
         if self.short.max_short_target > self.ladder.max_abs_inventory:
             raise ValueError("short target must not exceed ladder inventory cap")
+        if self.features is not None and not isinstance(self.features, AdaptiveFeatures):
+            raise ValueError("features must be AdaptiveFeatures when provided")
+
+    @property
+    def active_features(self) -> AdaptiveFeatures:
+        return self.features or AdaptiveFeatures.from_stage(self.stage)
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +126,7 @@ class AdaptiveGridState:
 @dataclass(frozen=True, slots=True)
 class AdaptiveGridDecision:
     stage: AdaptiveStage
+    features: AdaptiveFeatures
     center: CenterProposal
     spacing: SpacingDecision
     de_risk: DeRiskDecision
@@ -147,14 +156,14 @@ class AdaptiveGridDecision:
         expected = self.previous_generation + (1 if self.economic_ladder_changed else 0)
         if self.effective_generation != expected:
             raise ValueError("effective_generation must track one economic ladder change")
-        if self.de_risk_applied != (self.stage >= AdaptiveStage.S4_DERISK):
-            raise ValueError("de_risk_applied must match stage")
-        if self.short_applied != (self.stage >= AdaptiveStage.S5_SHORT):
-            raise ValueError("short_applied must match stage")
-        if self.funding_applied != (self.stage >= AdaptiveStage.S6_FUNDING):
-            raise ValueError("funding_applied must match stage")
-        if self.order_book_applied != (self.stage >= AdaptiveStage.S7_ORDER_BOOK):
-            raise ValueError("order_book_applied must match stage")
+        if self.de_risk_applied != self.features.partial_derisk:
+            raise ValueError("de_risk_applied must match active features")
+        if self.short_applied != self.features.conditional_reversal:
+            raise ValueError("short_applied must match active features")
+        if self.funding_applied != self.features.funding_bias:
+            raise ValueError("funding_applied must match active features")
+        if self.order_book_applied != self.features.order_book_reference:
+            raise ValueError("order_book_applied must match active features")
 
 
 def _ladder_config_with_spacing(
@@ -169,15 +178,14 @@ def _target_pipeline(
     signals: AdaptiveSignals,
     config: AdaptiveGridPolicyConfig,
 ) -> tuple[DeRiskDecision, ShortOverlayDecision, FundingBiasDecision, InventoryTargetDecision]:
+    features = config.active_features
     de_risk = apply_partial_de_risk(
         config.inventory.base_long_target,
         signals.trend_score,
         config.de_risk,
     )
     target_after_derisk = (
-        de_risk.effective_target
-        if config.stage >= AdaptiveStage.S4_DERISK
-        else config.inventory.base_long_target
+        de_risk.effective_target if features.partial_derisk else config.inventory.base_long_target
     )
 
     short = apply_conditional_short(
@@ -187,7 +195,7 @@ def _target_pipeline(
         config=config.short,
     )
     target_after_short = (
-        short.effective_target if config.stage >= AdaptiveStage.S5_SHORT else target_after_derisk
+        short.effective_target if features.conditional_reversal else target_after_derisk
     )
 
     funding = apply_funding_bias(
@@ -196,14 +204,13 @@ def _target_pipeline(
         funding_rate=signals.funding_rate,
         config=config.funding,
     )
-    target_after_funding = (
-        funding.effective_target if config.stage >= AdaptiveStage.S6_FUNDING else target_after_short
-    )
+    target_after_funding = funding.effective_target if features.funding_bias else target_after_short
 
     inventory = decide_inventory_target(
         position=snapshot.position_quantity,
         target=target_after_funding,
         config=config.inventory,
+        enabled=features.inventory_control,
     )
     return de_risk, short, funding, inventory
 
@@ -226,7 +233,7 @@ def _reference_pipeline(
     )
     effective_reference = (
         order_book.effective_reference
-        if config.stage >= AdaptiveStage.S7_ORDER_BOOK
+        if config.active_features.order_book_reference
         else inventory_reference
     )
     return inventory_reference, order_book, effective_reference
@@ -349,8 +356,10 @@ def decide_adaptive_grid(
         effective_state = state
         effective_ladder = current_ladder
 
+    features = config.active_features
     decision = AdaptiveGridDecision(
         stage=config.stage,
+        features=features,
         center=center,
         spacing=spacing,
         de_risk=de_risk,
@@ -365,10 +374,10 @@ def decide_adaptive_grid(
         previous_generation=state.generation,
         effective_generation=effective_state.generation,
         economic_ladder_changed=changed,
-        de_risk_applied=config.stage >= AdaptiveStage.S4_DERISK,
-        short_applied=config.stage >= AdaptiveStage.S5_SHORT,
-        funding_applied=config.stage >= AdaptiveStage.S6_FUNDING,
-        order_book_applied=config.stage >= AdaptiveStage.S7_ORDER_BOOK,
+        de_risk_applied=features.partial_derisk,
+        short_applied=features.conditional_reversal,
+        funding_applied=features.funding_bias,
+        order_book_applied=features.order_book_reference,
     )
     return decision, effective_state, effective_ladder
 
