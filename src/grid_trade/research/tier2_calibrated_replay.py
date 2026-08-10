@@ -49,6 +49,14 @@ class CalibratedTier2ReplayConfig:
             raise ValueError("hft tick_size must match calibrated candidate venue tick_size")
         if self.hft.lot_size != self.candidate.venue.quantity_step:
             raise ValueError("hft lot_size must match calibrated candidate venue quantity_step")
+        instrument = self.candidate.instrument
+        if (
+            instrument is not None
+            and self.hft.contract_multiplier != instrument.contract_multiplier
+        ):
+            raise ValueError(
+                "hft contract_multiplier must match calibrated candidate InstrumentSpec"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +153,7 @@ def run_calibrated_tier2_replay(
         hft=config.hft,
         market_impact=config.market_impact,
         synthetic_receive_latency_ns=config.synthetic_receive_latency_ns,
+        instrument=config.candidate.instrument,
     )
     volatility = candidate.calibrated_market_state.volatility_scale
     if volatility is None:
