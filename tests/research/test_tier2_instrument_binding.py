@@ -31,6 +31,7 @@ def _instrument(
     tick_size: str = "0.01",
     quantity_step: str = "0.001",
     contract_multiplier: str = "10",
+    funding_interval_seconds: int = 3_600,
 ) -> InstrumentSpec:
     return InstrumentSpec(
         instrument_id=instrument_id,
@@ -41,7 +42,14 @@ def _instrument(
         min_quantity=Decimal("0.001"),
         min_notional=Decimal("1"),
         max_quantity=Decimal("100"),
-        funding_interval_seconds=3_600,
+        funding_interval_seconds=funding_interval_seconds,
+    )
+
+
+def _market_impact() -> MarketImpactEligibilityConfig:
+    return MarketImpactEligibilityConfig(
+        max_same_level_participation=Decimal("0.1"),
+        max_top_n_participation=Decimal("0.1"),
     )
 
 
@@ -62,12 +70,25 @@ def _manifest(
             lot_size=Decimal(lot_size),
             contract_multiplier=Decimal(contract_multiplier),
         ),
-        market_impact=MarketImpactEligibilityConfig(
-            max_same_level_participation=Decimal("0.1"),
-            max_top_n_participation=Decimal("0.1"),
-        ),
+        market_impact=_market_impact(),
         synthetic_receive_latency_ns=0,
         instrument=instrument or _instrument(),
+    )
+
+
+def _manifest_without_instrument(contract_multiplier: str) -> Tier2ReplayManifest:
+    return Tier2ReplayManifest(
+        dataset=_dataset(),
+        strategy_identity="strategy-v1",
+        calibration_identity="calibration-v1",
+        hft=HftReplayConfig(
+            tick_size=Decimal("0.01"),
+            lot_size=Decimal("0.001"),
+            contract_multiplier=Decimal(contract_multiplier),
+        ),
+        market_impact=_market_impact(),
+        synthetic_receive_latency_ns=0,
+        instrument=None,
     )
 
 
@@ -76,6 +97,17 @@ def test_tier2_manifest_accepts_matching_explicit_instrument() -> None:
 
     assert manifest.instrument is not None
     assert manifest.instrument.instrument_id == manifest.dataset.instrument
+
+
+def test_unit_multiplier_legacy_manifest_may_omit_instrument() -> None:
+    manifest = _manifest_without_instrument("1")
+
+    assert manifest.instrument is None
+
+
+def test_non_unit_multiplier_requires_explicit_instrument() -> None:
+    with pytest.raises(ValueError, match="requires InstrumentSpec"):
+        _manifest_without_instrument("10")
 
 
 def test_tier2_manifest_rejects_dataset_instrument_mismatch() -> None:
@@ -96,3 +128,8 @@ def test_tier2_manifest_rejects_hft_contract_mismatch(field: str, value: str) ->
 
     with pytest.raises(ValueError, match=field):
         _manifest(**kwargs)  # type: ignore[arg-type]
+
+
+def test_tier2_manifest_rejects_non_hourly_funding_contract() -> None:
+    with pytest.raises(ValueError, match="hourly funding"):
+        _manifest(instrument=_instrument(funding_interval_seconds=28_800))
