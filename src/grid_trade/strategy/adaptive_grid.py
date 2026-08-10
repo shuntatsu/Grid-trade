@@ -2,6 +2,10 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import IntEnum
 
+from grid_trade.domain.instrument import (
+    LEGACY_UNSPECIFIED_INSTRUMENT,
+    require_instruments_compatible,
+)
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
 from grid_trade.strategy.adaptive_ladder import AdaptiveLadderConfig, build_adaptive_ladder
@@ -92,6 +96,7 @@ class AdaptiveGridState:
     ask_scale: Decimal
     position_basis: Decimal
     generation: int
+    instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
 
     def __post_init__(self) -> None:
         _require_finite_positive(self.center, field="center")
@@ -106,6 +111,8 @@ class AdaptiveGridState:
                 raise ValueError(f"{field_name} must be within [0, 1]")
         if self.generation < 0:
             raise ValueError("generation must be non-negative")
+        if not self.instrument_id.strip():
+            raise ValueError("instrument_id must be non-empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +236,11 @@ def _build_state_ladder(
     state: AdaptiveGridState,
     config: AdaptiveGridPolicyConfig,
 ) -> tuple[PassiveOrderIntent, ...]:
+    require_instruments_compatible(
+        state.instrument_id,
+        config.ladder.instrument_id,
+        context="adaptive state/config",
+    )
     return build_adaptive_ladder(
         reference=state.reference,
         position=state.position_basis,
@@ -246,6 +258,11 @@ def initialize_adaptive_grid(
     signals: AdaptiveSignals,
     config: AdaptiveGridPolicyConfig,
 ) -> tuple[AdaptiveGridState, tuple[PassiveOrderIntent, ...]]:
+    require_instruments_compatible(
+        snapshot.instrument_id,
+        config.ladder.instrument_id,
+        context="adaptive snapshot/config",
+    )
     _, _, _, inventory = _target_pipeline(snapshot, signals, config)
     spacing = propose_volatility_spacing(
         snapshot,
@@ -269,6 +286,7 @@ def initialize_adaptive_grid(
         ask_scale=inventory.ask_scale,
         position_basis=snapshot.position_quantity,
         generation=0,
+        instrument_id=snapshot.instrument_id,
     )
     return state, _build_state_ladder(state, config)
 
@@ -281,6 +299,16 @@ def decide_adaptive_grid(
     *,
     previous_config: AdaptiveGridPolicyConfig | None = None,
 ) -> tuple[AdaptiveGridDecision, AdaptiveGridState, tuple[PassiveOrderIntent, ...]]:
+    require_instruments_compatible(
+        snapshot.instrument_id,
+        state.instrument_id,
+        context="adaptive snapshot/state",
+    )
+    require_instruments_compatible(
+        snapshot.instrument_id,
+        config.ladder.instrument_id,
+        context="adaptive snapshot/config",
+    )
     current_ladder = _build_state_ladder(state, previous_config or config)
     center = propose_dynamic_center(
         snapshot,
@@ -307,6 +335,7 @@ def decide_adaptive_grid(
         ask_scale=inventory.ask_scale,
         position_basis=snapshot.position_quantity,
         generation=candidate_generation,
+        instrument_id=snapshot.instrument_id,
     )
     candidate_ladder = _build_state_ladder(candidate_state, config)
     changed = ladder_economic_signature(candidate_ladder) != ladder_economic_signature(

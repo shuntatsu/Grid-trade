@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
+from grid_trade.domain.instrument import LEGACY_UNSPECIFIED_INSTRUMENT
 from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 
 _BASIS_POINTS = Decimal(10_000)
@@ -31,6 +32,7 @@ class AdaptiveLadderConfig:
     order_quantity: Decimal
     tick_size: Decimal
     max_abs_inventory: Decimal
+    instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
 
     def __post_init__(self) -> None:
         if not 1 <= self.levels <= 50:
@@ -40,6 +42,8 @@ class AdaptiveLadderConfig:
         _require_positive(self.order_quantity, field="order_quantity")
         _require_positive(self.tick_size, field="tick_size")
         _require_positive(self.max_abs_inventory, field="max_abs_inventory")
+        if not self.instrument_id.strip():
+            raise ValueError("instrument_id must be non-empty")
 
 
 def _validate_scale(value: Decimal, *, field: str) -> None:
@@ -87,15 +91,21 @@ def _side_orders(
             if side is OrderSide.SELL and price < previous_price:
                 raise ValueError("sell ladder must remain ascending")
 
+        namespace = (
+            ""
+            if config.instrument_id == LEGACY_UNSPECIFIED_INSTRUMENT
+            else f"{config.instrument_id}:"
+        )
         orders.append(
             PassiveOrderIntent(
-                client_order_id=f"{stage}:g{generation}:{side.value}:l{level}",
+                client_order_id=f"{namespace}{stage}:g{generation}:{side.value}:l{level}",
                 generation=generation,
                 level=level,
                 side=side,
                 price=price,
                 quantity=quantity,
                 reduce_only=reduce_only,
+                instrument_id=config.instrument_id,
             ),
         )
         remaining -= quantity
