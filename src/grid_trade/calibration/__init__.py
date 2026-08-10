@@ -54,6 +54,7 @@ from grid_trade.calibration.order_flow import (
     predict_ofi_displacement,
     update_ofi_impact,
 )
+from grid_trade.calibration.sampling import SamplingSpec
 from grid_trade.calibration.trend import (
     TrendCalibrationConfig,
     TrendEstimate,
@@ -101,6 +102,7 @@ __all__ = [
     "OfiImpactState",
     "RobustVolatilityConfig",
     "RobustVolatilityState",
+    "SamplingSpec",
     "TopOfBookObservation",
     "TrendCalibrationConfig",
     "TrendEstimate",

@@ -88,6 +88,12 @@ def update_universal_calibration(
     config: UniversalCalibrationConfig,
 ) -> UniversalCalibrationUpdate:
     _validate_observation_pair(observation, book)
+    sampling = config.foundation.sampling
+    if sampling is not None:
+        for markout in markouts:
+            sampling.validate_markout(markout)
+        for sample in new_ofi_impact_samples:
+            sampling.validate_ofi_sample(sample)
 
     foundation = update_calibration_engine(
         state.foundation_state,
