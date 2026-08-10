@@ -21,6 +21,7 @@ from grid_trade.research.replay_attribution import MarketImpactEligibilityConfig
 from grid_trade.research.tier2_replay import (
     Tier2ReplayManifest,
     Tier2ReplayResult,
+    required_hourly_funding_timestamps,
     run_tier2_replay,
 )
 
@@ -136,10 +137,11 @@ def build_tier2_fixture_case() -> Tier2FixtureCase:
         _trade(5_000_000_000, quantity="0.02", ordinal=2),
         _funding(_HOUR_NS, ordinal=0),
     )
+    required_funding = required_hourly_funding_timestamps(events)
     audit = audit_canonical_dataset(
         events,
         raw_objects=raw_objects,
-        required_funding_timestamps_ns=(_HOUR_NS,),
+        required_funding_timestamps_ns=required_funding,
         expected_normalization_schema_version="canonical-v1",
     )
     dataset = DatasetManifest(
@@ -151,6 +153,7 @@ def build_tier2_fixture_case() -> Tier2FixtureCase:
         acceptance=audit.acceptance,
         created_at=datetime(2026, 8, 10, tzinfo=UTC),
         audit_digest=audit_report_digest(audit),
+        required_funding_timestamps_ns=required_funding,
     )
     return Tier2FixtureCase(
         manifest=Tier2ReplayManifest(
