@@ -61,6 +61,7 @@ The initial foundation provides:
 - cancel-before-replace working-order reconciliation;
 - partial-fill and duplicate-order fail-closed handling;
 - an independent hard Risk controller which can block new risk or require flattening;
+- defense-in-depth validation of reduce-only direction and cumulative flattening capacity, so malformed reduce-only ladders fail closed even if Strategy or a venue adapter is wrong;
 - canonical JSON Evidence with SHA-256 run digests;
 - pinned `hftbacktest==2.4.4` microstructure replay using risk-adverse queueing, partial fills, explicit tick/lot sizes, and finite latency-aware replay timeouts;
 - pinned `nautilus_trader==1.230.0` construct-only mapping for GTC post-only limit orders;
@@ -235,6 +236,7 @@ OSS reuse:
 
 - **NautilusTrader** — primary event-driven runtime and intended Hyperliquid data/execution integration. The maintained construct-only adapter preserves BUY/SELL and reduce-only semantics when producing GTC post-only limit orders; it does not submit orders in tests.
 - **hftbacktest** — L2/L3-oriented research oracle for queue-sensitive passive fills and latency assumptions. Both BUY and SELL replay paths are tested. The current replay adapter does **not** model exchange-side `reduce_only` enforcement, so reduce-only safety remains a Strategy/Risk/Nautilus boundary, not an hftbacktest claim.
+  `HftReplayConfig.contract_multiplier` is applied to the linear replay asset and to Tier-2 liquidity, funding, and fee attribution. Legacy synthetic fixtures default to multiplier `1`; explicit generalized replay binds and validates an `InstrumentSpec`.
 - **Hyperliquid official Python SDK** — optional independent conformance/diagnostic oracle.
 - **Hummingbot** — reference source for established market-making ideas; not an authoritative runtime.
 
