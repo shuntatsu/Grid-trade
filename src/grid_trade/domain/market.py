@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from grid_trade.domain.instrument import LEGACY_UNSPECIFIED_INSTRUMENT
 from grid_trade.domain.numeric import deterministic_decimal_context
 
 
@@ -18,12 +19,15 @@ class MarketSnapshot:
     realized_volatility: Decimal
     position_quantity: Decimal
     source_id: str
+    instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
 
     def __post_init__(self) -> None:
         if self.timestamp.tzinfo is None or self.timestamp.utcoffset() is None:
             raise ValueError("timestamp must be timezone-aware")
         if not self.source_id.strip():
             raise ValueError("source_id must be non-empty")
+        if not self.instrument_id.strip():
+            raise ValueError("instrument_id must be non-empty")
 
         _require_finite(self.best_bid, field="best_bid")
         _require_finite(self.best_ask, field="best_ask")
