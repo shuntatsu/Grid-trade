@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from grid_trade.domain.numeric import deterministic_decimal_context
+
 
 def _require_finite(value: Decimal, *, field: str) -> None:
     if not value.is_finite():
@@ -39,7 +41,8 @@ class MarketSnapshot:
 
     @property
     def mid(self) -> Decimal:
-        return (self.best_bid + self.best_ask) / Decimal(2)
+        with deterministic_decimal_context():
+            return (self.best_bid + self.best_ask) / Decimal(2)
 
 
 __all__ = ["MarketSnapshot"]
