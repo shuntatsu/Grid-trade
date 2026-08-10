@@ -106,7 +106,6 @@ def test_promoting_replay_rejects_undeclared_hourly_funding_requirement() -> Non
             max_top_n_participation=Decimal("1"),
         ),
         synthetic_receive_latency_ns=0,
-        required_funding_timestamps_ns=(),
     )
 
     with pytest.raises(ValueError, match="hourly funding requirements"):
