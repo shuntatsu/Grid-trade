@@ -64,9 +64,7 @@ class DirectionalTargetProfileConfig:
             field="opposite_entry_aligned_trend_threshold",
         )
         if not _NEGATIVE_ONE < self.opposite_entry_aligned_trend_threshold < _ZERO:
-            raise ValueError(
-                "opposite_entry_aligned_trend_threshold must be within (-1, 0)"
-            )
+            raise ValueError("opposite_entry_aligned_trend_threshold must be within (-1, 0)")
         _require_fraction(
             self.max_opposite_target_fraction,
             field="max_opposite_target_fraction",
@@ -184,9 +182,7 @@ def apply_conditional_reversal(
                 _ONE,
             )
             requested_target = (
-                -preferred_sign
-                * profile.max_opposite_target(max_abs_target)
-                * adverse_severity
+                -preferred_sign * profile.max_opposite_target(max_abs_target) * adverse_severity
             )
         else:
             adverse_severity = _ZERO

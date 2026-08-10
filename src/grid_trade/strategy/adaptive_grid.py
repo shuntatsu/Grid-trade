@@ -39,6 +39,11 @@ from grid_trade.strategy.order_book_reference import (
     OrderBookReferenceDecision,
     decide_order_book_reference,
 )
+from grid_trade.strategy.target_profile import (
+    DirectionalTargetProfileConfig,
+    apply_conditional_reversal,
+    apply_directional_de_risk,
+)
 from grid_trade.strategy.volatility_spacing import (
     SpacingDecision,
     VolatilitySpacingConfig,
@@ -78,6 +83,7 @@ class AdaptiveGridPolicyConfig:
     order_book: OrderBookReferenceConfig
     stage: AdaptiveStage = AdaptiveStage.S7_ORDER_BOOK
     features: AdaptiveFeatures | None = None
+    target_profile: DirectionalTargetProfileConfig | None = None
 
     def __post_init__(self) -> None:
         if self.inventory.max_abs_target != self.ladder.max_abs_inventory:
@@ -88,6 +94,10 @@ class AdaptiveGridPolicyConfig:
             raise ValueError("short target must not exceed ladder inventory cap")
         if self.features is not None and not isinstance(self.features, AdaptiveFeatures):
             raise ValueError("features must be AdaptiveFeatures when provided")
+        if self.target_profile is not None and not isinstance(
+            self.target_profile, DirectionalTargetProfileConfig
+        ):
+            raise ValueError("target_profile must be DirectionalTargetProfileConfig when provided")
 
     @property
     def active_features(self) -> AdaptiveFeatures:
@@ -173,7 +183,7 @@ def _ladder_config_with_spacing(
     return replace(config, spacing_bps=spacing_bps)
 
 
-def _target_pipeline(
+def _legacy_target_pipeline(
     snapshot: MarketSnapshot,
     signals: AdaptiveSignals,
     config: AdaptiveGridPolicyConfig,
@@ -213,6 +223,63 @@ def _target_pipeline(
         enabled=features.inventory_control,
     )
     return de_risk, short, funding, inventory
+
+
+def _profile_target_pipeline(
+    snapshot: MarketSnapshot,
+    signals: AdaptiveSignals,
+    config: AdaptiveGridPolicyConfig,
+    profile: DirectionalTargetProfileConfig,
+) -> tuple[DeRiskDecision, ShortOverlayDecision, FundingBiasDecision, InventoryTargetDecision]:
+    features = config.active_features
+    max_abs_target = config.inventory.max_abs_target
+    de_risk = apply_directional_de_risk(
+        profile=profile,
+        max_abs_target=max_abs_target,
+        trend_score=signals.trend_score,
+        config=config.de_risk,
+    )
+    baseline_target = profile.baseline_target(max_abs_target)
+    target_after_derisk = de_risk.effective_target if features.partial_derisk else baseline_target
+
+    reversal = apply_conditional_reversal(
+        target=target_after_derisk,
+        position=snapshot.position_quantity,
+        trend_score=signals.trend_score,
+        profile=profile,
+        max_abs_target=max_abs_target,
+    )
+    target_after_reversal = (
+        reversal.effective_target if features.conditional_reversal else target_after_derisk
+    )
+
+    funding = apply_funding_bias(
+        target=target_after_reversal,
+        position=snapshot.position_quantity,
+        funding_rate=signals.funding_rate,
+        config=config.funding,
+    )
+    target_after_funding = (
+        funding.effective_target if features.funding_bias else target_after_reversal
+    )
+
+    inventory = decide_inventory_target(
+        position=snapshot.position_quantity,
+        target=target_after_funding,
+        config=config.inventory,
+        enabled=features.inventory_control,
+    )
+    return de_risk, reversal, funding, inventory
+
+
+def _target_pipeline(
+    snapshot: MarketSnapshot,
+    signals: AdaptiveSignals,
+    config: AdaptiveGridPolicyConfig,
+) -> tuple[DeRiskDecision, ShortOverlayDecision, FundingBiasDecision, InventoryTargetDecision]:
+    if config.target_profile is None:
+        return _legacy_target_pipeline(snapshot, signals, config)
+    return _profile_target_pipeline(snapshot, signals, config, config.target_profile)
 
 
 def _reference_pipeline(
