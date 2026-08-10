@@ -1,0 +1,54 @@
+name: Temporary maintainability formatter
+
+on:
+  push:
+    branches:
+      - agent/maintainability-modularization
+    paths:
+      - .github/workflows/format-maintainability.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-maintainability-formatter
+  cancel-in-progress: false
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/maintainability-modularization
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: python -m pip install uv==0.11.25
+      - name: Sync development environment
+        run: uv sync --extra dev --frozen
+      - name: Apply deterministic formatting and safe lint fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --extra dev ruff format .
+          uv run --frozen --extra dev ruff check --fix .
+          uv run --frozen --extra dev ruff format .
+          uv run --frozen --extra dev ruff format --check .
+          uv run --frozen --extra dev ruff check .
+          git diff --check
+      - name: Commit formatting changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No formatting changes required"
+            exit 0
+          fi
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git commit -m "style: apply Ruff formatting and import order"
+          git push origin HEAD:agent/maintainability-modularization
