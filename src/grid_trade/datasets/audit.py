@@ -66,7 +66,7 @@ class DatasetAuditReport:
     required_funding_timestamps_ns: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
-        for value in (
+        for counter in (
             self.event_count,
             self.exact_duplicate_count,
             self.conflicting_duplicate_count,
@@ -74,9 +74,9 @@ class DatasetAuditReport:
             self.max_exchange_gap_ns,
             self.p95_exchange_gap_ns,
         ):
-            if value < 0:
+            if counter < 0:
                 raise ValueError("audit counters and statistics must be non-negative")
-        for value in (
+        for timestamp_ns in (
             self.observed_start_ns,
             self.observed_end_ns,
             self.book_start_ns,
@@ -84,7 +84,7 @@ class DatasetAuditReport:
             self.trade_start_ns,
             self.trade_end_ns,
         ):
-            if value is not None and value < 0:
+            if timestamp_ns is not None and timestamp_ns < 0:
                 raise ValueError("audit timestamps must be non-negative")
         if any(timestamp < 0 for timestamp in self.required_funding_timestamps_ns):
             raise ValueError("required funding timestamps must be non-negative")
