@@ -215,16 +215,54 @@ OSS reuse:
 
 Dependency direction is intentionally constrained:
 
+- `serialization/` contains standard-library-only canonical encoding and hashing;
 - `domain/` contains immutable contracts and does not depend on higher layers;
+- `datasets/` contains runtime-neutral acquisition/audit contracts and canonical market events;
 - `calibration/` contains causal instrument-agnostic estimators and cannot depend on Strategy, Risk, Application, Execution, Integrations, or Research;
 - `strategy/` contains pure policy and does not call Risk or Execution;
 - `risk/` owns hard veto logic and account/risk-derived capacity sizing;
 - `execution/` owns runtime-neutral reconciliation;
 - `application/` coordinates Strategy, Risk, and Execution and is prevented from depending back on Evidence, Integrations, or Research;
+- `evidence/` owns ordered, canonical research records and run digests;
 - `research/` owns controlled experiments and evidence workflows;
 - `integrations/` owns external-runtime mappings.
 
 Architecture tests prevent optional hftbacktest/Nautilus dependencies from leaking into core layers.
+
+### Responsibility-scoped package map
+
+High-change subsystems are divided by the reason they change while keeping their historical
+public import paths stable:
+
+```text
+grid_trade.serialization
+  canonical.py                  # generic canonical JSON bytes and SHA-256
+
+grid_trade.datasets.audit
+  models.py                     # findings and immutable audit reports
+  quality.py                    # coverage, overlap, gap, and alignment calculations
+  runner.py                     # ordered audit aggregation and promotion guard
+
+grid_trade.integrations.hyperliquid.forward_recorder
+  contracts.py                  # recorder/session contracts and transport protocol
+  manifest.py                   # completed-segment manifest schema
+  segment.py                    # durable frames, fsync, atomic publication
+  session.py                    # subscriptions, heartbeat, reference, reconnect state
+
+grid_trade.research.tier2_replay
+  dataset.py                    # manifest binding and exact-hour funding validation
+  liquidity.py                  # participation and visibility-boundary policy
+  attribution.py                # fills, funding, fees, and ending position
+  identity.py                   # decision and run identities
+  evidence.py                   # deterministic Evidence assembly
+  runner.py                     # Hard Risk and replay orchestration
+```
+
+Existing callers continue to import from `grid_trade.datasets.audit`,
+`grid_trade.integrations.hyperliquid.forward_recorder`, and
+`grid_trade.research.tier2_replay`; package `__init__.py` files explicitly own those public APIs.
+The generic serializer is standard-library-only. The Evidence ledger remains separate because it
+also enforces run identity, contiguous sequence numbers, and monotonic event timestamps.
 
 ## What S0–S7 mechanics do not establish
 

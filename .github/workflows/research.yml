@@ -13,6 +13,7 @@ on:
       - "src/grid_trade/integrations/**"
       - "src/grid_trade/research/**"
       - "src/grid_trade/risk/**"
+      - "src/grid_trade/serialization/**"
       - "src/grid_trade/strategy/**"
       - "tests/application/**"
       - "tests/architecture/**"
@@ -41,6 +42,7 @@ on:
       - "src/grid_trade/integrations/**"
       - "src/grid_trade/research/**"
       - "src/grid_trade/risk/**"
+      - "src/grid_trade/serialization/**"
       - "src/grid_trade/strategy/**"
       - "tests/application/**"
       - "tests/architecture/**"
@@ -118,7 +120,7 @@ jobs:
           src/grid_trade/research/replay_attribution.py
           src/grid_trade/research/tier2_calibrated_candidate.py
           src/grid_trade/research/tier2_calibrated_replay.py
-          src/grid_trade/research/tier2_replay.py
+          src/grid_trade/research/tier2_replay
           src/grid_trade/research/tier2_fixture_runner.py
           tests/datasets
           tests/integrations/hyperliquid
