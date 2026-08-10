@@ -16,6 +16,7 @@ from grid_trade.strategy.dynamic_center import (
     initialize_dynamic_center,
     propose_dynamic_center,
 )
+from grid_trade.strategy.features import AdaptiveFeatures
 from grid_trade.strategy.fixed_grid import build_fixed_long_grid
 from grid_trade.strategy.grid_geometry import (
     FixedLongGridConfig,
@@ -35,6 +36,7 @@ from grid_trade.strategy.volatility_spacing import (
 )
 
 __all__ = [
+    "AdaptiveFeatures",
     "AdaptiveGridDecision",
     "AdaptiveGridPolicyConfig",
     "AdaptiveGridState",
