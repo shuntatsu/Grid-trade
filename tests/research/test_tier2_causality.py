@@ -11,7 +11,10 @@ from grid_trade.datasets.canonical import (
     TradeSide,
 )
 from grid_trade.research.tier2_fixture_runner import Tier2FixtureCase, build_tier2_fixture_case
-from grid_trade.research.tier2_replay import Tier2ReplayManifest
+from grid_trade.research.tier2_replay import (
+    Tier2ReplayManifest,
+    required_hourly_funding_timestamps,
+)
 
 pytestmark = pytest.mark.research
 
@@ -39,15 +42,19 @@ def _manifest_for_events(
     case: Tier2FixtureCase,
     events: tuple[CanonicalEventEnvelope, ...],
 ) -> Tier2ReplayManifest:
+    required_funding = required_hourly_funding_timestamps(events)
     report = audit_canonical_dataset(
         events,
         raw_objects=case.manifest.dataset.raw_objects,
+        required_funding_timestamps_ns=required_funding,
         expected_normalization_schema_version=case.manifest.dataset.normalization_schema_version,
+        expectations=case.manifest.dataset.audit_expectations,
     )
     dataset = replace(
         case.manifest.dataset,
         acceptance=report.acceptance,
         audit_digest=audit_report_digest(report),
+        required_funding_timestamps_ns=required_funding,
     )
     return replace(case.manifest, dataset=dataset)
 
