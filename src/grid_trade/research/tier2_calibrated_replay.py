@@ -1,7 +1,11 @@
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from grid_trade.datasets.audit import audit_canonical_dataset, audit_report_digest
+from grid_trade.datasets.audit import (
+    DatasetAuditExpectations,
+    audit_canonical_dataset,
+    audit_report_digest,
+)
 from grid_trade.datasets.canonical import CanonicalEventEnvelope
 from grid_trade.datasets.contracts import DatasetAcceptance
 from grid_trade.datasets.manifest import DatasetManifest
@@ -17,6 +21,7 @@ from grid_trade.research.tier2_calibrated_candidate import (
 from grid_trade.research.tier2_replay import (
     Tier2ReplayManifest,
     Tier2ReplayResult,
+    required_hourly_funding_timestamps,
     run_tier2_replay,
 )
 
@@ -66,14 +71,36 @@ def _replay_window(
     return replay_events
 
 
+def _replay_audit_expectations(
+    dataset: DatasetManifest,
+    replay_events: tuple[CanonicalEventEnvelope, ...],
+) -> DatasetAuditExpectations:
+    original = dataset.audit_expectations
+    observed_start_ns = min(event.exchange_ts_ns for event in replay_events)
+    observed_end_ns = max(event.exchange_ts_ns for event in replay_events)
+    return DatasetAuditExpectations(
+        requested_start_ns=(
+            observed_start_ns if original.requested_start_ns is not None else None
+        ),
+        requested_end_ns=(observed_end_ns if original.requested_end_ns is not None else None),
+        tick_size=original.tick_size,
+        lot_size=original.lot_size,
+        require_book_trade_overlap=original.require_book_trade_overlap,
+    )
+
+
 def _replay_dataset_manifest(
     dataset: DatasetManifest,
     replay_events: tuple[CanonicalEventEnvelope, ...],
 ) -> DatasetManifest:
+    required_funding = required_hourly_funding_timestamps(replay_events)
+    expectations = _replay_audit_expectations(dataset, replay_events)
     report = audit_canonical_dataset(
         replay_events,
         raw_objects=dataset.raw_objects,
+        required_funding_timestamps_ns=required_funding,
         expected_normalization_schema_version=dataset.normalization_schema_version,
+        expectations=expectations,
     )
     if report.acceptance is not DatasetAcceptance.ACCEPTED:
         raise ValueError("calibrated Tier-2 replay window is not audit ACCEPTED")
@@ -81,6 +108,8 @@ def _replay_dataset_manifest(
         dataset,
         acceptance=report.acceptance,
         audit_digest=audit_report_digest(report),
+        required_funding_timestamps_ns=required_funding,
+        audit_expectations=expectations,
     )
 
 
