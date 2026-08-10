@@ -160,13 +160,15 @@ def funding_cash_flow(
     timestamp_ns: int,
     position: Decimal,
     reference: CanonicalFundingReference,
+    contract_multiplier: Decimal = Decimal(1),
 ) -> FundingCashFlow:
     if reference.funding_rate is None:
         raise ValueError("funding_rate is required for funding cash flow")
     if reference.oracle_price is None:
         raise ValueError("oracle_price is required for funding cash flow")
     _require_finite(position, field="position")
-    payment = position * reference.oracle_price * reference.funding_rate
+    _require_finite_positive(contract_multiplier, field="contract_multiplier")
+    payment = position * reference.oracle_price * contract_multiplier * reference.funding_rate
     return FundingCashFlow(
         timestamp_ns=timestamp_ns,
         position=position,
@@ -174,6 +176,20 @@ def funding_cash_flow(
         reference_price=reference.oracle_price,
         cash_flow=-payment,
     )
+
+
+def maker_fee_cash_flow(
+    *,
+    price: Decimal,
+    quantity: Decimal,
+    maker_fee_rate: Decimal,
+    contract_multiplier: Decimal = Decimal(1),
+) -> Decimal:
+    _require_finite_positive(price, field="price")
+    _require_finite_positive(quantity, field="quantity")
+    _require_finite(maker_fee_rate, field="maker_fee_rate")
+    _require_finite_positive(contract_multiplier, field="contract_multiplier")
+    return -(price * quantity * contract_multiplier * maker_fee_rate)
 
 
 def _ineligible(
@@ -204,10 +220,12 @@ def assess_order_liquidity_eligibility(
     visible_top_n_notional: Decimal | None,
     visibility_trusted: bool,
     config: MarketImpactEligibilityConfig,
+    contract_multiplier: Decimal = Decimal(1),
 ) -> OrderLiquidityEligibility:
     _require_finite_positive(order_price, field="order_price")
     _require_finite_positive(order_quantity, field="order_quantity")
-    order_notional = order_price * order_quantity
+    _require_finite_positive(contract_multiplier, field="contract_multiplier")
+    order_notional = order_price * order_quantity * contract_multiplier
 
     if not visibility_trusted:
         return _ineligible(
@@ -359,5 +377,6 @@ __all__ = [
     "assess_order_liquidity_eligibility",
     "first_order_visibility_loss_ns",
     "funding_cash_flow",
+    "maker_fee_cash_flow",
     "summarize_order_liquidity",
 ]
