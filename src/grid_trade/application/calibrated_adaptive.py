@@ -25,6 +25,7 @@ from grid_trade.strategy.adaptive_signals import AdaptiveSignals
 from grid_trade.strategy.conditional_short import ShortOverlayConfig
 from grid_trade.strategy.de_risk import DeRiskConfig
 from grid_trade.strategy.dynamic_center import DynamicCenterConfig
+from grid_trade.strategy.features import AdaptiveFeatures
 from grid_trade.strategy.funding_bias import FundingBiasConfig
 from grid_trade.strategy.inventory_target import InventoryTargetConfig
 from grid_trade.strategy.order_book_reference import OrderBookReferenceConfig
@@ -191,7 +192,7 @@ def _require_matching_market_context(
 
 def _readiness_reason(
     calibrated: CalibratedMarketState,
-    stage: AdaptiveStage,
+    features: AdaptiveFeatures,
 ) -> str | None:
     if (
         not calibrated.volatility_status.ready
@@ -208,11 +209,11 @@ def _readiness_reason(
         or calibrated.execution_cost_floor is None
     ):
         return "microstructure_not_ready"
-    if stage >= AdaptiveStage.S6_FUNDING and (
+    if features.funding_bias and (
         not calibrated.funding_status.ready or calibrated.funding_score is None
     ):
         return "funding_not_ready"
-    if stage >= AdaptiveStage.S7_ORDER_BOOK and (
+    if features.order_book_reference and (
         calibrated.order_book_score is None or calibrated.estimated_microprice_displacement is None
     ):
         return "order_book_not_ready"
@@ -226,9 +227,11 @@ def prepare_calibrated_adaptive_inputs(
     capacity: InventoryCapacity,
     meta: CalibratedAdaptiveMetaConfig,
     venue: VenueGridConstraints,
+    features: AdaptiveFeatures | None = None,
 ) -> CalibratedAdaptivePreparation:
     _require_matching_market_context(snapshot, calibrated)
-    unavailable_reason = _readiness_reason(calibrated, meta.stage)
+    active_features = features or AdaptiveFeatures.from_stage(meta.stage)
+    unavailable_reason = _readiness_reason(calibrated, active_features)
     if unavailable_reason is not None:
         return CalibratedAdaptivePreparation(inputs=None, reason=unavailable_reason)
 
@@ -286,14 +289,12 @@ def prepare_calibrated_adaptive_inputs(
         reservation_skew_bps = volatility * meta.reservation_skew_vol_units * _BASIS_POINTS
         order_book_shift_bps = volatility * meta.order_book_shift_vol_units * _BASIS_POINTS
 
-        funding_signal = (
-            calibrated.funding_score if meta.stage >= AdaptiveStage.S6_FUNDING else _ZERO
-        )
+        funding_signal = calibrated.funding_score if active_features.funding_bias else _ZERO
         order_book_signal = (
-            calibrated.order_book_score if meta.stage >= AdaptiveStage.S7_ORDER_BOOK else _ZERO
+            calibrated.order_book_score if active_features.order_book_reference else _ZERO
         )
         microprice: Decimal | None = None
-        if meta.stage >= AdaptiveStage.S7_ORDER_BOOK:
+        if active_features.order_book_reference:
             displacement = calibrated.estimated_microprice_displacement
             if displacement is None or order_book_signal is None:
                 raise AssertionError("S7 readiness must guarantee order-book outputs")
@@ -354,6 +355,7 @@ def prepare_calibrated_adaptive_inputs(
             imbalance_shift_bps=order_book_shift_bps,
         ),
         stage=meta.stage,
+        features=active_features,
     )
     return CalibratedAdaptivePreparation(
         inputs=CalibratedAdaptiveInputs(
