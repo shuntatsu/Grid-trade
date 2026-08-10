@@ -1,5 +1,5 @@
 diff --git a/src/grid_trade/application/passive_policy.py b/src/grid_trade/application/passive_policy.py
-index 638f44a..6a70fbb 100644
+index 638f44a..00daa88 100644
 --- a/src/grid_trade/application/passive_policy.py
 +++ b/src/grid_trade/application/passive_policy.py
 @@ -1,5 +1,6 @@
@@ -19,16 +19,16 @@ index 638f44a..6a70fbb 100644
 +    working_orders: tuple[WorkingOrder, ...],
 +    proposed_ladder: tuple[PassiveOrderIntent, ...],
 +) -> None:
-+    for order in working_orders:
++    for working_order in working_orders:
 +        require_instruments_compatible(
 +            snapshot.instrument_id,
-+            order.instrument_id,
++            working_order.instrument_id,
 +            context="working order",
 +        )
-+    for order in proposed_ladder:
++    for proposed_order in proposed_ladder:
 +        require_instruments_compatible(
 +            snapshot.instrument_id,
-+            order.instrument_id,
++            proposed_order.instrument_id,
 +            context="proposed order",
 +        )
 +
