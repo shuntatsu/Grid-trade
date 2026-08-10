@@ -18,8 +18,8 @@ The change also tightens executable architecture contracts around these paths wi
 - Add explicit Risk reasons for malformed reduce-only ladders.
 - Add `contract_multiplier` to the pinned hftbacktest configuration and use it when constructing the linear asset.
 - Apply multiplier-aware notional calculations to liquidity participation, funding cash flow, and maker-fee attribution.
-- Allow `Tier2ReplayManifest` to bind an explicit `InstrumentSpec` and validate instrument, tick, lot, and multiplier consistency.
-- Require the calibrated Tier-2 path to propagate its explicit instrument into replay.
+- Allow `Tier2ReplayManifest` to bind an explicit `InstrumentSpec` and validate instrument, tick, lot, multiplier, and supported funding cadence consistency.
+- Require non-unit replay multipliers and the calibrated Tier-2 path to provide an explicit instrument specification.
 - Add architecture and regression tests for the new contracts.
 - Update README architecture notes and research limitations.
 
@@ -27,6 +27,7 @@ The change also tightens executable architecture contracts around these paths wi
 
 - Portfolio allocation or cross-instrument netting.
 - Inverse perpetuals, spot, futures, options, or multi-currency collateral.
+- Generalized non-hourly funding replay; the current Tier-2 funding schedule remains explicitly hourly.
 - Live exchange acknowledgements and production order lifecycle state machines.
 - New alpha signals or profitability claims.
 - Broad package reorganization unrelated to the correctness gaps.
@@ -48,12 +49,13 @@ Malformed reduce-only orders are filtered and cause the exact candidate ladder t
 
 ## Contract multiplier design
 
-`HftReplayConfig.contract_multiplier` becomes the authoritative replay economic multiplier, defaulting to `1` for legacy deterministic fixtures. `Tier2ReplayManifest.instrument`, when supplied, must match:
+`HftReplayConfig.contract_multiplier` becomes the authoritative replay economic multiplier, defaulting to `1` for legacy deterministic fixtures. A non-unit multiplier requires `Tier2ReplayManifest.instrument`; when supplied, it must match:
 
 - `dataset.instrument`;
 - `hft.tick_size`;
 - `hft.lot_size`;
-- `hft.contract_multiplier`.
+- `hft.contract_multiplier`;
+- the currently supported hourly Tier-2 funding cadence.
 
 All Tier-2 notional calculations use:
 
@@ -73,9 +75,9 @@ The calibrated Tier-2 path already owns an explicit `InstrumentSpec`; it must pr
 
 ## Compatibility
 
-- Existing unit-multiplier fixtures continue to work through a default multiplier of `1`.
+- Existing unit-multiplier fixtures continue to work through a default multiplier of `1` without an explicit spec.
 - Public function signatures gain keyword-only/defaulted multiplier parameters where practical.
-- Explicit generalized and calibrated paths use `InstrumentSpec` validation.
+- Non-unit and calibrated generalized paths require `InstrumentSpec` validation.
 - No existing strategy economics or stage presets are changed.
 
 ## Failure behavior
@@ -83,7 +85,8 @@ The calibrated Tier-2 path already owns an explicit `InstrumentSpec`; it must pr
 The system remains fail-closed:
 
 - malformed reduce-only ladders cannot commit candidate Strategy state;
-- multiplier/spec mismatches raise before replay;
+- non-unit multiplier paths without an `InstrumentSpec` raise before replay;
+- multiplier/spec and funding-cadence mismatches raise before replay;
 - unsupported contract types remain rejected by `InstrumentSpec`;
 - Tier-2 results continue to prohibit production, alpha, or economics authorization.
 
@@ -94,6 +97,6 @@ Required evidence:
 - RED→GREEN regression tests for wrong-side, flat, oversize, and cumulative reduce-only orders;
 - multiplier metamorphic tests proving equivalent economic notional produces equal liquidity, funding, and fee attribution;
 - hftbacktest configuration test proving the configured multiplier reaches `.linear_asset`;
-- calibrated replay manifest propagation tests;
+- explicit manifest and calibrated replay propagation tests;
 - architecture tests and all existing Core/Research CI checks;
 - deterministic Evidence reproduction on the final PR head.
