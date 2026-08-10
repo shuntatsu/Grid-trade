@@ -1,0 +1,82 @@
+name: Temporary merged generalization branch cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cleanup-merged-generalization-branch.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-merged-generalization-branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify and delete merged branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MERGE_SHA: 821e58e40af382dec56a8a423eb8cbc349d3d6b2
+          EXPECTED_BRANCH_SHA: 61790c035362631974022030ffc4ce39bda51a91
+          TARGET_BRANCH: agent/generalize-strategy-core
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          parent_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${cleanup_sha}" --jq '.parents[0].sha')
+          if [[ "$parent_sha" != "$EXPECTED_MERGE_SHA" ]]; then
+            echo "Unexpected cleanup parent: $parent_sha" >&2
+            exit 1
+          fi
+
+          encoded_branch=$(python - "$TARGET_BRANCH" <<'PY'
+          import sys
+          from urllib.parse import quote
+
+          print(quote(sys.argv[1], safe=""))
+          PY
+          )
+          branch_sha=$(gh api "repos/${GITHUB_REPOSITORY}/branches/${encoded_branch}" --jq '.commit.sha')
+          if [[ "$branch_sha" != "$EXPECTED_BRANCH_SHA" ]]; then
+            echo "Unexpected branch head: $branch_sha" >&2
+            exit 1
+          fi
+
+          merge_tree=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${EXPECTED_MERGE_SHA}" --jq '.tree.sha')
+          branch_tree=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${branch_sha}" --jq '.tree.sha')
+          if [[ "$merge_tree" != "$branch_tree" ]]; then
+            echo "Merged and branch trees differ: $merge_tree != $branch_tree" >&2
+            exit 1
+          fi
+
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/${encoded_branch}"
+
+          remaining=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/branches?per_page=100" \
+            --jq '.[].name')
+          if grep -Fqx "$TARGET_BRANCH" <<<"$remaining"; then
+            echo "Branch still exists after deletion: $TARGET_BRANCH" >&2
+            exit 1
+          fi
+
+      - name: Remove temporary cleanup workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          path='.github/workflows/cleanup-merged-generalization-branch.yml'
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=main" --jq '.sha')
+          gh api \
+            --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/contents/${path}" \
+            -f message='chore: remove temporary merged branch cleanup workflow' \
+            -f sha="$sha" \
+            -f branch='main'
