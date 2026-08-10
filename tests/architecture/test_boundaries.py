@@ -28,7 +28,19 @@ def _python_files(layer: str) -> tuple[Path, ...]:
             "domain",
             (
                 "grid_trade.application",
+                "grid_trade.calibration",
                 "grid_trade.evidence",
+                "grid_trade.execution",
+                "grid_trade.integrations",
+                "grid_trade.research",
+                "grid_trade.risk",
+                "grid_trade.strategy",
+            ),
+        ),
+        (
+            "calibration",
+            (
+                "grid_trade.application",
                 "grid_trade.execution",
                 "grid_trade.integrations",
                 "grid_trade.research",
@@ -50,6 +62,7 @@ def _python_files(layer: str) -> tuple[Path, ...]:
             "risk",
             (
                 "grid_trade.application",
+                "grid_trade.calibration",
                 "grid_trade.execution",
                 "grid_trade.integrations",
                 "grid_trade.research",
@@ -93,7 +106,15 @@ def test_optional_runtime_dependencies_stay_out_of_core_layers() -> None:
     forbidden_runtime_prefixes = ("hftbacktest", "nautilus_trader")
     violations: list[str] = []
 
-    for layer in ("application", "domain", "evidence", "execution", "risk", "strategy"):
+    for layer in (
+        "application",
+        "calibration",
+        "domain",
+        "evidence",
+        "execution",
+        "risk",
+        "strategy",
+    ):
         for path in _python_files(layer):
             for imported in _imports(path):
                 if imported.startswith(forbidden_runtime_prefixes):

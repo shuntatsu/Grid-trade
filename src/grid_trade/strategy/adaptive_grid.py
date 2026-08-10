@@ -278,8 +278,10 @@ def decide_adaptive_grid(
     signals: AdaptiveSignals,
     state: AdaptiveGridState,
     config: AdaptiveGridPolicyConfig,
+    *,
+    previous_config: AdaptiveGridPolicyConfig | None = None,
 ) -> tuple[AdaptiveGridDecision, AdaptiveGridState, tuple[PassiveOrderIntent, ...]]:
-    current_ladder = _build_state_ladder(state, config)
+    current_ladder = _build_state_ladder(state, previous_config or config)
     center = propose_dynamic_center(
         snapshot,
         DynamicCenterState(center=state.center, generation=state.generation),

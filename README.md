@@ -151,6 +151,59 @@ It records:
 
 The controlled runner deliberately does **not** infer fills from its exogenous position path and sets PnL to zero. It is a deterministic mechanics/ablation proof, not a profitability backtest.
 
+## Universal causal market calibration foundation
+
+The absolute values used by the checked-in S0–S7 controlled runners are deterministic **mechanics fixtures**, not universal market parameters. Strategy research must not infer that a fixed `40 bps` floor, a fixed coin quantity, a fixed funding divisor, or a symbol-specific threshold is appropriate for a live or historical instrument.
+
+The `grid_trade.calibration` boundary provides an instrument-agnostic causal foundation:
+
+- robust rolling log-return volatility in relative-price units;
+- dimensionless trend normalization using the instrument's own volatility scale;
+- rolling robust funding normalization with explicit unavailable/degenerate states instead of a fixed global funding scale;
+- strict timestamp and source/instrument continuity in the calibration engine;
+- frozen estimator meta-parameters after the first accepted observation;
+- explicit readiness for every calibration component;
+- deterministic evidence-sensitive Decimal arithmetic independent of the caller's Decimal context;
+- metamorphic tests proving that changing only the symbol identity cannot change numeric calibration output;
+- price-scale tests proving that multiplying all prices by a constant does not change normalized volatility/trend output.
+
+Account/risk capacity remains outside Calibration. `grid_trade.risk.sizing` derives `Q_max` from the most conservative of notional, margin, volatility-risk, and venue quantity caps. Calibration cannot increase Hard Risk limits, and Strategy may only consume a fraction of the capacity supplied to it.
+
+## Universal causal microstructure calibration
+
+Phase B adds venue-neutral Tier-2 calibration without changing the existing S2–S7 strategy mechanics:
+
+- GLFT-style arrival-intensity calibration fits `λ(δ) = A exp(-kδ)` with exposure-aware Poisson likelihood; quote distance is expressed in volatility units rather than symbol-specific dollars or ticks, and zero-arrival buckets remain informative;
+- best-level OFI follows price/queue event changes and is normalized by observed top-of-book depth;
+- microprice and its displacement are represented in relative-price units;
+- OFI impact is fitted from matured short-horizon labels only; a future label may be retained as pending state but cannot enter the fit or evict the current causal window before `matured_at`;
+- adverse-selection cost uses matured BUY/SELL markouts and a deterministic upper quantile, with an explicit configured conservative fallback while markout evidence is insufficient;
+- execution-cost floor combines maker fee/rebate, adverse markout, uncertainty buffer, and tick/mid floor, and can never become negative;
+- the microstructure engine freezes config after its first observation, enforces timestamp and identity continuity, and reports explicit readiness/quality instead of fabricating unavailable L2 state;
+- order-book impact is normalized into volatility units before conversion to a bounded score;
+- public top-of-book and calibration calculations use the deterministic Decimal context.
+
+The Tier-2 inputs are L2/top-of-book observations, distance/exposure/arrival evidence, and matured OFI/markout labels. OHLC data is not used as a substitute for queue, depth, arrival, fill, or markout evidence.
+
+The checked-in microstructure calibration research runner is a **deterministic synthetic calibration/mechanics fixture**. It records frozen config, state generation, `A/k` and fit improvement, quote-distance scale, markout/fallback components, OFI beta/quality, predicted displacement, microprice displacement, and readiness in canonical Evidence. It also checks arbitrary-symbol rename and common price/size scale invariance. This runner does not establish historical performance, economic alpha, or production authorization.
+
+## Universal calibration → adaptive strategy integration
+
+Phase C adds a separate calibrated Application path while retaining the checked-in S0–S7 controlled fixture path unchanged for deterministic regression. The new path:
+
+- composes Foundation and Microstructure calibration with exact timestamp/source/instrument/mid consistency;
+- derives executable inventory capacity from `grid_trade.risk.sizing` and only rounds `Q_max` downward to the venue quantity step;
+- derives center thresholds, spacing limits, reservation skew, and order-book shift from volatility units rather than symbol-specific basis-point constants;
+- combines the volatility floor, GLFT quote-distance estimate, and calibrated execution/adverse-selection cost when deriving spacing;
+- consumes normalized funding with unit scale and normalized order-book/OFI state without symbol-specific divisors;
+- reconstructs calibrated microprice from relative displacement only when S7 microstructure evidence is ready;
+- compares an existing working ladder with the **previous applied runtime config** and the candidate ladder with the newly calibrated config, preventing dynamic parameter changes from being mistaken for queue-equivalent state;
+- keeps the previous config through cancel-before-replace and Risk rejection, committing the candidate config only when the candidate economic state is accepted;
+- preserves the Long → Flat → Short contract and leaves Hard Risk as the final veto authority;
+- emits additive deterministic calibrated-adaptive Evidence and proves arbitrary-symbol rename and common price/size scale invariance.
+
+The calibrated integration runner still does not infer historical fills or PnL and explicitly records `economics_validated=false`, `alpha_validated=false`, and `production_authorized=false`. Strategy economics must still pass realistic continuous Tier-2 replay, symbol-disjoint walk-forward evaluation, sealed OOS tests, and stress gates before any production consideration.
+
 ## Execution and research architecture
 
 OSS reuse:
@@ -163,8 +216,9 @@ OSS reuse:
 Dependency direction is intentionally constrained:
 
 - `domain/` contains immutable contracts and does not depend on higher layers;
+- `calibration/` contains causal instrument-agnostic estimators and cannot depend on Strategy, Risk, Application, Execution, Integrations, or Research;
 - `strategy/` contains pure policy and does not call Risk or Execution;
-- `risk/` owns hard veto logic;
+- `risk/` owns hard veto logic and account/risk-derived capacity sizing;
 - `execution/` owns runtime-neutral reconciliation;
 - `application/` coordinates Strategy, Risk, and Execution and is prevented from depending back on Evidence, Integrations, or Research;
 - `research/` owns controlled experiments and evidence workflows;

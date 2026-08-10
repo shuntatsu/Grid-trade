@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "src/grid_trade/application/**"
+      - "src/grid_trade/calibration/**"
+      - "src/grid_trade/domain/**"
       - "src/grid_trade/evidence/**"
       - "src/grid_trade/execution/**"
       - "src/grid_trade/integrations/**"
@@ -13,6 +15,7 @@ on:
       - "src/grid_trade/strategy/**"
       - "tests/application/**"
       - "tests/architecture/**"
+      - "tests/calibration/**"
       - "tests/evidence/**"
       - "tests/execution/**"
       - "tests/integrations/**"
@@ -27,6 +30,8 @@ on:
     branches: [main]
     paths:
       - "src/grid_trade/application/**"
+      - "src/grid_trade/calibration/**"
+      - "src/grid_trade/domain/**"
       - "src/grid_trade/evidence/**"
       - "src/grid_trade/execution/**"
       - "src/grid_trade/integrations/**"
@@ -35,6 +40,7 @@ on:
       - "src/grid_trade/strategy/**"
       - "tests/application/**"
       - "tests/architecture/**"
+      - "tests/calibration/**"
       - "tests/evidence/**"
       - "tests/execution/**"
       - "tests/integrations/**"
@@ -50,7 +56,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: research-v5-${{ github.workflow }}-${{ github.ref }}
+  group: research-v6-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -87,6 +93,16 @@ jobs:
           uv run --frozen --extra dev --extra research mypy
           src/grid_trade/research/adaptive_runner.py
           tests/research/test_adaptive_runner.py
+      - name: Type check microstructure calibration research boundary
+        run: >-
+          uv run --frozen --extra dev --extra research mypy
+          src/grid_trade/research/microstructure_calibration_runner.py
+          tests/research/test_microstructure_calibration_runner.py
+      - name: Type check calibrated adaptive research boundary
+        run: >-
+          uv run --frozen --extra dev --extra research mypy
+          src/grid_trade/research/calibrated_adaptive_runner.py
+          tests/research/test_calibrated_adaptive_runner.py
       - name: Verify S0 evidence across fresh processes
         shell: bash
         run: |
@@ -119,3 +135,19 @@ jobs:
           test -n "$first"
           test "$first" = "$second"
           echo "Adaptive evidence digest: $first"
+      - name: Verify microstructure calibration evidence across fresh processes
+        shell: bash
+        run: |
+          first="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.microstructure_calibration_runner)"
+          second="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.microstructure_calibration_runner)"
+          test -n "$first"
+          test "$first" = "$second"
+          echo "Microstructure calibration evidence digest: $first"
+      - name: Verify calibrated adaptive evidence across fresh processes
+        shell: bash
+        run: |
+          first="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.calibrated_adaptive_runner)"
+          second="$(PYTHONPATH=src uv run --frozen --extra dev --extra research python -m grid_trade.research.calibrated_adaptive_runner)"
+          test -n "$first"
+          test "$first" = "$second"
+          echo "Calibrated adaptive evidence digest: $first"

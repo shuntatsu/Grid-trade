@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -184,3 +185,29 @@ def test_tick_equivalent_signal_change_preserves_generation_and_queue() -> None:
 
     assert next_state.generation == initial_state.generation
     assert next_ladder == initial_ladder
+
+
+def test_runtime_config_change_compares_against_previous_working_ladder() -> None:
+    previous_config = _config()
+    initial_state, initial_ladder = initialize_adaptive_grid(
+        _snapshot(),
+        _signals(),
+        previous_config,
+    )
+    next_config = replace(
+        previous_config,
+        ladder=replace(previous_config.ladder, order_quantity=Decimal("0.01")),
+    )
+
+    decision, next_state, next_ladder = decide_adaptive_grid(
+        _snapshot(second=1),
+        _signals(),
+        initial_state,
+        next_config,
+        previous_config=previous_config,
+    )
+
+    assert decision.economic_ladder_changed is True
+    assert next_state.generation == initial_state.generation + 1
+    assert initial_ladder != next_ladder
+    assert all(order.quantity <= Decimal("0.01") for order in next_ladder)
