@@ -1,7 +1,6 @@
 import ast
 from pathlib import Path
 
-
 _SRC = Path("src/grid_trade")
 
 
@@ -99,9 +98,7 @@ def test_forward_recorder_public_api_is_stable() -> None:
         read_segment_records,
     )
 
-    assert FORWARD_SEGMENT_MANIFEST_SCHEMA_VERSION == (
-        "hyperliquid-forward-segment-manifest-v1"
-    )
+    assert FORWARD_SEGMENT_MANIFEST_SCHEMA_VERSION == ("hyperliquid-forward-segment-manifest-v1")
     assert all(
         value is not None
         for value in (
@@ -170,9 +167,7 @@ def test_only_tier2_runner_owns_hftbacktest_adapter_dependency() -> None:
 def test_tier2_runner_does_not_depend_on_exchange_integration() -> None:
     runner = _SRC / "research" / "tier2_replay" / "runner.py"
     violations = [
-        imported
-        for imported in _imports(runner)
-        if imported.startswith("grid_trade.integrations")
+        imported for imported in _imports(runner) if imported.startswith("grid_trade.integrations")
     ]
     assert violations == []
 

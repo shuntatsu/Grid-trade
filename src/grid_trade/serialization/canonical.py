@@ -5,7 +5,6 @@ from decimal import Decimal
 from enum import Enum
 from hashlib import sha256
 
-
 type JSONScalar = None | bool | int | float | str
 type JSONValue = JSONScalar | list[JSONValue] | dict[str, JSONValue]
 

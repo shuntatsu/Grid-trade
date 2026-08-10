@@ -32,13 +32,13 @@ from grid_trade.datasets.contracts import DatasetAcceptance
 from grid_trade.datasets.manifest import DatasetManifest
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
-from grid_trade.serialization import canonical_json_digest
 from grid_trade.risk.sizing import (
     InventoryCapacity,
     RiskSizingConfig,
     RiskSizingInput,
     derive_inventory_capacity,
 )
+from grid_trade.serialization import canonical_json_digest
 
 
 def _require_finite(value: Decimal, *, field: str) -> None:
@@ -57,7 +57,6 @@ def _datetime_from_ns(timestamp_ns: int) -> datetime:
         raise ValueError("timestamp must be non-negative")
     seconds, remainder_ns = divmod(timestamp_ns, 1_000_000_000)
     return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=remainder_ns // 1_000)
-
 
 
 @dataclass(frozen=True, slots=True)
