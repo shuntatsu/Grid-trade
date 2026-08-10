@@ -1,0 +1,50 @@
+name: Temporary maintainability patch application
+
+on:
+  push:
+    branches:
+      - agent/maintainability-modularization
+    paths:
+      - .github/workflows/apply-maintainability-patch.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-maintainability-patch
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'chore: stage maintainability patch runner'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/maintainability-modularization
+          fetch-depth: 0
+
+      - name: Apply verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat .maintainability-patch/chunk-* > /tmp/maintainability.patch.gz.b64
+          test "$(sha256sum /tmp/maintainability.patch.gz.b64 | cut -d' ' -f1)" = \
+            "fe17a868e2b1bbd51c1774cff17867dcb0f7de9d1fe5b94f0ebe82e2b7639bda"
+
+          base64 --decode /tmp/maintainability.patch.gz.b64 > /tmp/maintainability.patch.gz
+          test "$(sha256sum /tmp/maintainability.patch.gz | cut -d' ' -f1)" = \
+            "d0659f1fa075c3acbb6a08e15e0b6d31b984f147295490ffe2716f11bf95abb6"
+
+          gzip --decompress --stdout /tmp/maintainability.patch.gz > /tmp/maintainability.patch
+          test "$(sha256sum /tmp/maintainability.patch | cut -d' ' -f1)" = \
+            "481fa96765cdd18bc814e58957bc01d9c97878995c5d132e1ac520513d0cd22b"
+
+          git apply --index /tmp/maintainability.patch
+          git rm -r .maintainability-patch
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git commit -m "refactor: modularize maintainability hotspots"
+          git push origin HEAD:agent/maintainability-modularization
