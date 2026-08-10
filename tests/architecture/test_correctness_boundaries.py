@@ -32,9 +32,7 @@ def test_tier2_manifest_owns_optional_explicit_instrument_binding() -> None:
 
 
 def test_calibrated_replay_propagates_explicit_instrument_binding() -> None:
-    source = Path("src/grid_trade/research/tier2_calibrated_replay.py").read_text(
-        encoding="utf-8"
-    )
+    source = Path("src/grid_trade/research/tier2_calibrated_replay.py").read_text(encoding="utf-8")
 
     assert "instrument=config.candidate.instrument" in source
     assert "self.hft.contract_multiplier != instrument.contract_multiplier" in source
