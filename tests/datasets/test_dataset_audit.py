@@ -143,7 +143,9 @@ def test_required_funding_schedule_is_part_of_audit_identity() -> None:
     assert without_requirement.acceptance is contracts.DatasetAcceptance.ACCEPTED
     assert with_requirement.acceptance is contracts.DatasetAcceptance.ACCEPTED
     assert with_requirement.required_funding_timestamps_ns == (200,)
-    assert audit.audit_report_digest(without_requirement) != audit.audit_report_digest(with_requirement)
+    assert audit.audit_report_digest(without_requirement) != audit.audit_report_digest(
+        with_requirement
+    )
 
 
 def test_unresolved_raw_object_hash_is_rejected() -> None:
