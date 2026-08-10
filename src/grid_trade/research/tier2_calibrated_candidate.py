@@ -1,10 +1,6 @@
-import json
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from enum import Enum
-from hashlib import sha256
-from typing import Any
 
 from grid_trade.application.calibrated_adaptive import (
     CalibratedAdaptiveMetaConfig,
@@ -36,6 +32,7 @@ from grid_trade.datasets.contracts import DatasetAcceptance
 from grid_trade.datasets.manifest import DatasetManifest
 from grid_trade.domain.market import MarketSnapshot
 from grid_trade.domain.orders import PassiveOrderIntent
+from grid_trade.serialization import canonical_json_digest
 from grid_trade.risk.sizing import (
     InventoryCapacity,
     RiskSizingConfig,
@@ -61,34 +58,6 @@ def _datetime_from_ns(timestamp_ns: int) -> datetime:
     seconds, remainder_ns = divmod(timestamp_ns, 1_000_000_000)
     return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=remainder_ns // 1_000)
 
-
-def _canonical_value(value: object) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Decimal):
-        return str(value)
-    if isinstance(value, datetime):
-        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
-    if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: _canonical_value(getattr(value, field.name)) for field in fields(value)}
-    if isinstance(value, tuple | list):
-        return [_canonical_value(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _canonical_value(item) for key, item in value.items()}
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    raise TypeError(f"unsupported calibrated candidate value: {type(value).__name__}")
-
-
-def _digest(value: object) -> str:
-    rendered = json.dumps(
-        _canonical_value(value),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-    return sha256(f"{rendered}\n".encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,7 +321,7 @@ def derive_tier2_calibrated_candidate(
         raise ValueError(f"calibrated adaptive candidate is not ready: {preparation.reason}")
     _, candidate_orders = initialize_calibrated_adaptive_grid(preparation.inputs)
 
-    provenance_digest = _digest(
+    provenance_digest = canonical_json_digest(
         {
             "decision_exchange_ts_ns": decision_exchange_ts_ns,
             "instrument": dataset.instrument,

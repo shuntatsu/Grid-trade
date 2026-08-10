@@ -71,6 +71,30 @@ accepted canonical pre-roll
 
 The candidate provenance SHA-256 is included in the replay calibration identity. Hard Risk remains authoritative and may eliminate all candidate orders.
 
+## Replay module ownership
+
+The public API remains `grid_trade.research.tier2_replay`, while internal responsibilities are
+separated so Dataset policy, runtime execution, accounting, and Evidence can evolve independently:
+
+```text
+Dataset binding and re-audit
+  -> Hard Risk gate
+  -> liquidity / visibility eligibility
+  -> optional pinned replay runtime
+  -> funding / fee / position attribution
+  -> decision identity and Evidence
+  -> Tier2ReplayResult
+```
+
+- `dataset.py` binds the exact accepted event set and funding schedule to the manifest.
+- `liquidity.py` owns same-level/top-N eligibility and the first untrusted visibility boundary.
+- `runner.py` is the only runtime path that invokes the hftbacktest adapter.
+- `attribution.py` computes causal position, exact-hour funding, maker fees, and ending position.
+- `identity.py` and `evidence.py` preserve deterministic decision/run identities and Evidence order.
+
+No split module may bypass Dataset acceptance or Hard Risk. Public imports, persisted Dataset and
+segment bytes, replay semantics, Evidence schema, and pinned digests remain compatibility contracts.
+
 ## Replay model
 
 Research replay pins `hftbacktest==2.4.4`, `PartialFillExchange`, and `RiskAverseQueueModel` with explicit tick size, lot size, latency assumptions, and fees.

@@ -1,14 +1,15 @@
-import json
-from dataclasses import dataclass, field, fields, is_dataclass
 from decimal import Decimal
-from enum import Enum, StrEnum
-from hashlib import sha256
 from itertools import pairwise
-from typing import Any
 
+from grid_trade.datasets.audit.models import AuditFinding, AuditSeverity, DatasetAuditReport
+from grid_trade.datasets.audit.quality import (
+    alignment_findings,
+    book_trade_overlap_ns,
+    event_range,
+    gap_statistics,
+)
 from grid_trade.datasets.audit_contracts import DatasetAuditExpectations
 from grid_trade.datasets.canonical import (
-    CanonicalBookSnapshot,
     CanonicalEventEnvelope,
     CanonicalEventType,
     CanonicalFundingReference,
@@ -18,104 +19,7 @@ from grid_trade.datasets.canonical import (
 )
 from grid_trade.datasets.contracts import DatasetAcceptance, RawObjectRef
 from grid_trade.datasets.manifest import DatasetManifest
-
-
-class AuditSeverity(StrEnum):
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-
-
-@dataclass(frozen=True, slots=True)
-class AuditFinding:
-    code: str
-    severity: AuditSeverity
-    message: str
-    event_index: int | None = None
-    exchange_ts_ns: int | None = None
-
-    def __post_init__(self) -> None:
-        if not self.code or not self.code.strip():
-            raise ValueError("finding code must be non-empty")
-        if not self.message or not self.message.strip():
-            raise ValueError("finding message must be non-empty")
-        if self.event_index is not None and self.event_index < 0:
-            raise ValueError("event_index must be non-negative")
-        if self.exchange_ts_ns is not None and self.exchange_ts_ns < 0:
-            raise ValueError("exchange_ts_ns must be non-negative")
-
-
-@dataclass(frozen=True, slots=True)
-class DatasetAuditReport:
-    acceptance: DatasetAcceptance
-    findings: tuple[AuditFinding, ...]
-    accepted_events: tuple[CanonicalEventEnvelope, ...]
-    event_count: int
-    exact_duplicate_count: int
-    conflicting_duplicate_count: int
-    expectations: DatasetAuditExpectations = field(default_factory=DatasetAuditExpectations)
-    observed_start_ns: int | None = None
-    observed_end_ns: int | None = None
-    book_start_ns: int | None = None
-    book_end_ns: int | None = None
-    trade_start_ns: int | None = None
-    trade_end_ns: int | None = None
-    book_trade_overlap_ns: int = 0
-    max_exchange_gap_ns: int = 0
-    p95_exchange_gap_ns: int = 0
-    required_funding_timestamps_ns: tuple[int, ...] = ()
-
-    def __post_init__(self) -> None:
-        for counter in (
-            self.event_count,
-            self.exact_duplicate_count,
-            self.conflicting_duplicate_count,
-            self.book_trade_overlap_ns,
-            self.max_exchange_gap_ns,
-            self.p95_exchange_gap_ns,
-        ):
-            if counter < 0:
-                raise ValueError("audit counters and statistics must be non-negative")
-        for timestamp_ns in (
-            self.observed_start_ns,
-            self.observed_end_ns,
-            self.book_start_ns,
-            self.book_end_ns,
-            self.trade_start_ns,
-            self.trade_end_ns,
-        ):
-            if timestamp_ns is not None and timestamp_ns < 0:
-                raise ValueError("audit timestamps must be non-negative")
-        if any(timestamp < 0 for timestamp in self.required_funding_timestamps_ns):
-            raise ValueError("required funding timestamps must be non-negative")
-        if self.required_funding_timestamps_ns != tuple(
-            sorted(set(self.required_funding_timestamps_ns))
-        ):
-            raise ValueError("required funding timestamps must be sorted and unique")
-
-    @property
-    def requested_start_ns(self) -> int | None:
-        return self.expectations.requested_start_ns
-
-    @property
-    def requested_end_ns(self) -> int | None:
-        return self.expectations.requested_end_ns
-
-
-def _canonical_value(value: object) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Decimal):
-        return str(value)
-    if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: _canonical_value(getattr(value, field.name)) for field in fields(value)}
-    if isinstance(value, tuple | list):
-        return [_canonical_value(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _canonical_value(item) for key, item in value.items()}
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    raise TypeError(f"unsupported audit value: {type(value).__name__}")
+from grid_trade.serialization import canonical_json_digest
 
 
 def _trade_identity(event: CanonicalEventEnvelope, trade: CanonicalTrade) -> tuple[str, str]:
@@ -140,98 +44,6 @@ def _acceptance(findings: tuple[AuditFinding, ...]) -> DatasetAcceptance:
     if any(finding.severity is AuditSeverity.WARNING for finding in findings):
         return DatasetAcceptance.ACCEPTED_WITH_WARNINGS
     return DatasetAcceptance.ACCEPTED
-
-
-def _range(
-    events: tuple[CanonicalEventEnvelope, ...],
-    event_type: CanonicalEventType | None = None,
-) -> tuple[int | None, int | None]:
-    timestamps = tuple(
-        event.exchange_ts_ns
-        for event in events
-        if event_type is None or event.event_type is event_type
-    )
-    if not timestamps:
-        return None, None
-    return min(timestamps), max(timestamps)
-
-
-def _book_trade_overlap_ns(
-    *,
-    book_start_ns: int | None,
-    book_end_ns: int | None,
-    trade_start_ns: int | None,
-    trade_end_ns: int | None,
-) -> int:
-    if None in (book_start_ns, book_end_ns, trade_start_ns, trade_end_ns):
-        return 0
-    assert book_start_ns is not None
-    assert book_end_ns is not None
-    assert trade_start_ns is not None
-    assert trade_end_ns is not None
-    return max(0, min(book_end_ns, trade_end_ns) - max(book_start_ns, trade_start_ns))
-
-
-def _gap_statistics(events: tuple[CanonicalEventEnvelope, ...]) -> tuple[int, int]:
-    timestamps = sorted(event.exchange_ts_ns for event in events)
-    gaps = sorted(current - previous for previous, current in pairwise(timestamps))
-    if not gaps:
-        return 0, 0
-    nearest_rank_index = max(0, (95 * len(gaps) + 99) // 100 - 1)
-    return gaps[-1], gaps[nearest_rank_index]
-
-
-def _aligned(value: Decimal, step: Decimal) -> bool:
-    return value % step == 0
-
-
-def _alignment_findings(
-    events: tuple[CanonicalEventEnvelope, ...],
-    expectations: DatasetAuditExpectations,
-) -> tuple[AuditFinding, ...]:
-    findings: list[AuditFinding] = []
-    for index, event in enumerate(events):
-        prices: tuple[Decimal, ...] = ()
-        quantities: tuple[Decimal, ...] = ()
-        if event.event_type is CanonicalEventType.BOOK_SNAPSHOT:
-            book = event.payload
-            if not isinstance(book, CanonicalBookSnapshot):
-                raise TypeError("validated book event must carry CanonicalBookSnapshot payload")
-            levels = (*book.bids, *book.asks)
-            prices = tuple(level.price for level in levels)
-            quantities = tuple(level.quantity for level in levels)
-        elif event.event_type is CanonicalEventType.TRADE:
-            trade = event.payload
-            if not isinstance(trade, CanonicalTrade):
-                raise TypeError("validated trade event must carry CanonicalTrade payload")
-            prices = (trade.price,)
-            quantities = (trade.quantity,)
-
-        if expectations.tick_size is not None and any(
-            not _aligned(price, expectations.tick_size) for price in prices
-        ):
-            findings.append(
-                AuditFinding(
-                    code="tick_alignment_violation",
-                    severity=AuditSeverity.ERROR,
-                    message="book/trade price is not aligned to the declared tick size",
-                    event_index=index,
-                    exchange_ts_ns=event.exchange_ts_ns,
-                )
-            )
-        if expectations.lot_size is not None and any(
-            not _aligned(quantity, expectations.lot_size) for quantity in quantities
-        ):
-            findings.append(
-                AuditFinding(
-                    code="lot_alignment_violation",
-                    severity=AuditSeverity.ERROR,
-                    message="book/trade quantity is not aligned to the declared lot size",
-                    event_index=index,
-                    exchange_ts_ns=event.exchange_ts_ns,
-                )
-            )
-    return tuple(findings)
 
 
 def audit_canonical_dataset(
@@ -328,24 +140,24 @@ def audit_canonical_dataset(
         accepted_events.append(event)
 
     frozen_accepted_events = tuple(accepted_events)
-    findings.extend(_alignment_findings(frozen_accepted_events, audit_expectations))
+    findings.extend(alignment_findings(frozen_accepted_events, audit_expectations))
 
-    observed_start_ns, observed_end_ns = _range(frozen_accepted_events)
-    book_start_ns, book_end_ns = _range(
+    observed_start_ns, observed_end_ns = event_range(frozen_accepted_events)
+    book_start_ns, book_end_ns = event_range(
         frozen_accepted_events,
         CanonicalEventType.BOOK_SNAPSHOT,
     )
-    trade_start_ns, trade_end_ns = _range(
+    trade_start_ns, trade_end_ns = event_range(
         frozen_accepted_events,
         CanonicalEventType.TRADE,
     )
-    overlap_ns = _book_trade_overlap_ns(
+    overlap_ns = book_trade_overlap_ns(
         book_start_ns=book_start_ns,
         book_end_ns=book_end_ns,
         trade_start_ns=trade_start_ns,
         trade_end_ns=trade_end_ns,
     )
-    max_gap_ns, p95_gap_ns = _gap_statistics(frozen_accepted_events)
+    max_gap_ns, p95_gap_ns = gap_statistics(frozen_accepted_events)
 
     if (
         audit_expectations.requested_start_ns is not None
@@ -426,14 +238,7 @@ def audit_canonical_dataset(
 
 
 def audit_report_digest(report: DatasetAuditReport) -> str:
-    payload = json.dumps(
-        _canonical_value(report),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-    return sha256(f"{payload}\n".encode()).hexdigest()
+    return canonical_json_digest(report)
 
 
 def require_promoting_dataset(dataset_manifest: DatasetManifest) -> None:
@@ -443,12 +248,4 @@ def require_promoting_dataset(dataset_manifest: DatasetManifest) -> None:
         raise ValueError("promoting replay requires an audit_digest")
 
 
-__all__ = [
-    "AuditFinding",
-    "AuditSeverity",
-    "DatasetAuditExpectations",
-    "DatasetAuditReport",
-    "audit_canonical_dataset",
-    "audit_report_digest",
-    "require_promoting_dataset",
-]
+__all__ = ["audit_canonical_dataset", "audit_report_digest", "require_promoting_dataset"]

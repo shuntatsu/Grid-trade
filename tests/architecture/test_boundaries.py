@@ -141,11 +141,24 @@ def test_optional_runtime_dependencies_stay_out_of_core_layers() -> None:
         "execution",
         "integrations/hyperliquid",
         "risk",
+        "serialization",
         "strategy",
     ):
         for path in _python_files(layer):
             for imported in _imports(path):
                 if imported.startswith(forbidden_runtime_prefixes):
                     violations.append(f"{path}: {imported}")
+
+    assert violations == []
+
+
+def test_serialization_is_standard_library_only() -> None:
+    violations = [
+        f"{path}: {imported}"
+        for path in _python_files("serialization")
+        if path.name != "__init__.py"
+        for imported in _imports(path)
+        if imported.startswith("grid_trade")
+    ]
 
     assert violations == []
