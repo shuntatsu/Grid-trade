@@ -20,6 +20,7 @@ def _order_liquidity(
     book: CanonicalBookSnapshot,
     order: PassiveOrderIntent,
     config: MarketImpactEligibilityConfig,
+    contract_multiplier: Decimal = Decimal(1),
 ) -> OrderLiquidityEligibility:
     levels = book.bids if order.side is OrderSide.BUY else book.asks
     visible_same_level_quantity = next(
@@ -27,7 +28,7 @@ def _order_liquidity(
         None,
     )
     visible_top_n_notional = sum(
-        (level.price * level.quantity for level in levels),
+        (level.price * level.quantity * contract_multiplier for level in levels),
         Decimal(0),
     )
     return assess_order_liquidity_eligibility(
@@ -37,6 +38,7 @@ def _order_liquidity(
         visible_top_n_notional=visible_top_n_notional,
         visibility_trusted=True,
         config=config,
+        contract_multiplier=contract_multiplier,
     )
 
 
