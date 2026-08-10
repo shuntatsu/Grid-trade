@@ -44,18 +44,24 @@ class Tier2ReplayManifest:
         _require_non_empty(self.calibration_identity, field="calibration_identity")
         if self.synthetic_receive_latency_ns < 0:
             raise ValueError("synthetic_receive_latency_ns must be non-negative")
-        if self.instrument is not None:
-            require_instruments_compatible(
-                self.dataset.instrument,
-                self.instrument.instrument_id,
-                context="Tier-2 dataset/spec",
-            )
-            if self.hft.tick_size != self.instrument.tick_size:
-                raise ValueError("hft tick_size must match InstrumentSpec")
-            if self.hft.lot_size != self.instrument.quantity_step:
-                raise ValueError("hft lot_size must match InstrumentSpec quantity_step")
-            if self.hft.contract_multiplier != self.instrument.contract_multiplier:
-                raise ValueError("hft contract_multiplier must match InstrumentSpec")
+        if self.instrument is None:
+            if self.hft.contract_multiplier != Decimal(1):
+                raise ValueError("non-unit hft contract_multiplier requires InstrumentSpec")
+            return
+
+        require_instruments_compatible(
+            self.dataset.instrument,
+            self.instrument.instrument_id,
+            context="Tier-2 dataset/spec",
+        )
+        if self.hft.tick_size != self.instrument.tick_size:
+            raise ValueError("hft tick_size must match InstrumentSpec")
+        if self.hft.lot_size != self.instrument.quantity_step:
+            raise ValueError("hft lot_size must match InstrumentSpec quantity_step")
+        if self.hft.contract_multiplier != self.instrument.contract_multiplier:
+            raise ValueError("hft contract_multiplier must match InstrumentSpec")
+        if self.instrument.funding_interval_seconds != 3_600:
+            raise ValueError("Tier-2 replay currently requires an hourly funding interval")
 
 
 @dataclass(frozen=True, slots=True)
