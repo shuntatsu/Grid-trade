@@ -1,0 +1,28 @@
+[
+  {
+    "coin": "BTC",
+    "side": "B",
+    "px": "113390.5",
+    "sz": "0.0100",
+    "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "time": 1754450974250,
+    "tid": 123456789,
+    "users": [
+      "0x1111111111111111111111111111111111111111",
+      "0x2222222222222222222222222222222222222222"
+    ]
+  },
+  {
+    "coin": "BTC",
+    "side": "A",
+    "px": "113389.0",
+    "sz": "0.025",
+    "hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "time": 1754450974251,
+    "tid": 123456790,
+    "users": [
+      "0x3333333333333333333333333333333333333333",
+      "0x4444444444444444444444444444444444444444"
+    ]
+  }
+]
