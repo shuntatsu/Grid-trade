@@ -74,10 +74,11 @@ jobs:
           set -euo pipefail
           uv lock --check
           uv sync --extra dev --extra research --frozen
-      - name: Verify formatting, lint, and patch hygiene
+      - name: Format and verify lint and patch hygiene
         shell: bash
         run: |
           set -euo pipefail
+          uv run --frozen --extra dev ruff format .
           uv run --frozen --extra dev ruff format --check --diff .
           uv run --frozen --extra dev ruff check .
           git diff --check
