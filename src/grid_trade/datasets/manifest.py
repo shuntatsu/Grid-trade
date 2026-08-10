@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+
 from grid_trade.datasets.audit_contracts import DatasetAuditExpectations
 from grid_trade.datasets.contracts import DatasetAcceptance, RawObjectRef
 from grid_trade.serialization import canonical_json_bytes
@@ -16,7 +17,6 @@ def _require_non_empty(value: str, *, field: str) -> None:
 def _require_utc(value: datetime, *, field: str) -> None:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         raise ValueError(f"{field} must be timezone-aware UTC")
-
 
 
 @dataclass(frozen=True, slots=True)
