@@ -51,6 +51,7 @@ def _config(**overrides: object) -> HftReplayConfig:
         "response_latency_ns": 0,
         "maker_fee": Decimal("0"),
         "taker_fee": Decimal("0"),
+        "contract_multiplier": Decimal("1"),
     }
     values.update(overrides)
     return HftReplayConfig(**values)  # type: ignore[arg-type]
@@ -90,6 +91,7 @@ def test_fixture_load_is_deterministic_and_separates_snapshot_from_feed() -> Non
         ("response_latency_ns", -1),
         ("maker_fee", Decimal("NaN")),
         ("taker_fee", Decimal("NaN")),
+        ("contract_multiplier", Decimal("0")),
     ],
 )
 def test_config_rejects_invalid_values(field: str, value: object) -> None:
@@ -152,6 +154,17 @@ def test_risk_adverse_queue_replay_observes_partial_then_full_fill() -> None:
         ending_position=Decimal("0.02"),
         open_order_count=0,
     )
+
+
+def test_non_unit_contract_multiplier_runs_through_pinned_runtime() -> None:
+    summary = replay_passive_orders(
+        load_microstructure_fixture(_FIXTURE),
+        (_buy_intent(),),
+        _config(contract_multiplier=Decimal("10")),
+    )
+
+    assert summary.ending_position == Decimal("0.02")
+    assert summary.open_order_count == 0
 
 
 def test_sell_side_replay_can_fill_and_produces_negative_inventory() -> None:
