@@ -1,11 +1,12 @@
 import json
 import re
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any
 
+from grid_trade.datasets.audit_contracts import DatasetAuditExpectations
 from grid_trade.datasets.contracts import DatasetAcceptance, RawObjectRef
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -51,6 +52,7 @@ class DatasetManifest:
     created_at: datetime
     audit_digest: str | None = None
     required_funding_timestamps_ns: tuple[int, ...] = ()
+    audit_expectations: DatasetAuditExpectations = field(default_factory=DatasetAuditExpectations)
 
     def __post_init__(self) -> None:
         _require_non_empty(self.instrument, field="instrument")
