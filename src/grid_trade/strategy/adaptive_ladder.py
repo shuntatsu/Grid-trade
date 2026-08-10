@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
-from grid_trade.domain.instrument import LEGACY_UNSPECIFIED_INSTRUMENT
+from grid_trade.domain.instrument import (
+    LEGACY_UNSPECIFIED_INSTRUMENT,
+    InstrumentSpec,
+    require_instruments_compatible,
+)
 from grid_trade.domain.orders import OrderSide, PassiveOrderIntent
 
 _BASIS_POINTS = Decimal(10_000)
@@ -33,6 +37,7 @@ class AdaptiveLadderConfig:
     tick_size: Decimal
     max_abs_inventory: Decimal
     instrument_id: str = LEGACY_UNSPECIFIED_INSTRUMENT
+    instrument: InstrumentSpec | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.levels <= 50:
@@ -44,6 +49,26 @@ class AdaptiveLadderConfig:
         _require_positive(self.max_abs_inventory, field="max_abs_inventory")
         if not self.instrument_id.strip():
             raise ValueError("instrument_id must be non-empty")
+        if self.instrument is not None:
+            require_instruments_compatible(
+                self.instrument_id,
+                self.instrument.instrument_id,
+                context="adaptive ladder config",
+            )
+            if self.tick_size != self.instrument.tick_size:
+                raise ValueError("adaptive ladder tick_size must match InstrumentSpec")
+            if self.max_abs_inventory > self.instrument.max_quantity:
+                raise ValueError(
+                    "adaptive ladder max_abs_inventory must not exceed instrument max_quantity"
+                )
+            if self.order_quantity != self.instrument.floor_quantity(self.order_quantity):
+                raise ValueError(
+                    "adaptive ladder order_quantity must align to instrument quantity_step"
+                )
+            if self.order_quantity > self.instrument.max_quantity:
+                raise ValueError(
+                    "adaptive ladder order_quantity must not exceed instrument max_quantity"
+                )
 
 
 def _validate_scale(value: Decimal, *, field: str) -> None:
@@ -83,6 +108,10 @@ def _side_orders(
         price = _round_to_tick(reference * multiplier, config.tick_size, side)
         if price <= 0:
             raise ValueError("adaptive ladder price must remain positive after tick rounding")
+        if config.instrument is not None:
+            quantity = config.instrument.floor_quantity(quantity)
+            if not config.instrument.is_executable(quantity, price):
+                continue
         if previous_price is not None:
             if price == previous_price:
                 continue
