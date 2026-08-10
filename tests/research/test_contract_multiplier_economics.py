@@ -2,13 +2,13 @@ from decimal import Decimal
 
 import pytest
 
-import grid_trade.research.replay_attribution as replay_attribution
 from grid_trade.datasets.canonical import CanonicalFundingReference
 from grid_trade.research.hftbacktest_adapter import HftReplayConfig
 from grid_trade.research.replay_attribution import (
     MarketImpactEligibilityConfig,
     assess_order_liquidity_eligibility,
     funding_cash_flow,
+    maker_fee_cash_flow,
 )
 
 pytestmark = pytest.mark.research
@@ -68,9 +68,6 @@ def test_liquidity_participation_is_contract_multiplier_invariant_at_equal_notio
 
 
 def test_maker_fee_cash_flow_is_contract_multiplier_invariant_at_equal_notional() -> None:
-    maker_fee_cash_flow = getattr(replay_attribution, "maker_fee_cash_flow", None)
-    assert maker_fee_cash_flow is not None
-
     unit = maker_fee_cash_flow(
         price=Decimal("100"),
         quantity=Decimal("1"),
