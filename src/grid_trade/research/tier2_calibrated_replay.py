@@ -79,9 +79,7 @@ def _replay_audit_expectations(
     observed_start_ns = min(event.exchange_ts_ns for event in replay_events)
     observed_end_ns = max(event.exchange_ts_ns for event in replay_events)
     return DatasetAuditExpectations(
-        requested_start_ns=(
-            observed_start_ns if original.requested_start_ns is not None else None
-        ),
+        requested_start_ns=(observed_start_ns if original.requested_start_ns is not None else None),
         requested_end_ns=(observed_end_ns if original.requested_end_ns is not None else None),
         tick_size=original.tick_size,
         lot_size=original.lot_size,
