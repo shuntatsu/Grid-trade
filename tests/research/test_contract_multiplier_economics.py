@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 
+import grid_trade.research.replay_attribution as replay_attribution
 from grid_trade.datasets.canonical import CanonicalFundingReference
 from grid_trade.research.hftbacktest_adapter import HftReplayConfig
 from grid_trade.research.replay_attribution import (
@@ -9,7 +10,6 @@ from grid_trade.research.replay_attribution import (
     assess_order_liquidity_eligibility,
     funding_cash_flow,
 )
-import grid_trade.research.replay_attribution as replay_attribution
 
 pytestmark = pytest.mark.research
 
