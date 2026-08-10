@@ -29,6 +29,7 @@ from grid_trade.strategy.features import AdaptiveFeatures
 from grid_trade.strategy.funding_bias import FundingBiasConfig
 from grid_trade.strategy.inventory_target import InventoryTargetConfig
 from grid_trade.strategy.order_book_reference import OrderBookReferenceConfig
+from grid_trade.strategy.target_profile import DirectionalTargetProfileConfig
 from grid_trade.strategy.volatility_spacing import VolatilitySpacingConfig
 
 _BASIS_POINTS = Decimal(10_000)
@@ -228,6 +229,7 @@ def prepare_calibrated_adaptive_inputs(
     meta: CalibratedAdaptiveMetaConfig,
     venue: VenueGridConstraints,
     features: AdaptiveFeatures | None = None,
+    target_profile: DirectionalTargetProfileConfig | None = None,
 ) -> CalibratedAdaptivePreparation:
     _require_matching_market_context(snapshot, calibrated)
     active_features = features or AdaptiveFeatures.from_stage(meta.stage)
@@ -356,6 +358,7 @@ def prepare_calibrated_adaptive_inputs(
         ),
         stage=meta.stage,
         features=active_features,
+        target_profile=target_profile,
     )
     return CalibratedAdaptivePreparation(
         inputs=CalibratedAdaptiveInputs(

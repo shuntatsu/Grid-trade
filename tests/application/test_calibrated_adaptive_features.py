@@ -4,6 +4,7 @@ from decimal import Decimal
 from grid_trade.application.calibrated_adaptive import (
     CalibratedAdaptiveMetaConfig,
     VenueGridConstraints,
+    initialize_calibrated_adaptive_grid,
     prepare_calibrated_adaptive_inputs,
 )
 from grid_trade.calibration import (
@@ -15,6 +16,7 @@ from grid_trade.domain.market import MarketSnapshot
 from grid_trade.risk.sizing import InventoryCapacity
 from grid_trade.strategy.adaptive_grid import AdaptiveStage
 from grid_trade.strategy.features import AdaptiveFeatures
+from grid_trade.strategy.target_profile import DirectionalTargetProfileConfig
 
 
 def _status(ready: bool, reason: str = "ready") -> CalibrationComponentStatus:
@@ -111,3 +113,35 @@ def test_readiness_depends_on_active_features_not_stage_ordinal() -> None:
     assert result.inputs is not None
     assert result.inputs.policy_config.active_features == features
     assert result.inputs.signals.funding_rate == Decimal("0")
+
+
+def test_calibrated_preparation_accepts_short_biased_profile() -> None:
+    features = AdaptiveFeatures(
+        inventory_control=True,
+        partial_derisk=False,
+        conditional_reversal=False,
+        funding_bias=False,
+        order_book_reference=False,
+    )
+    profile = DirectionalTargetProfileConfig(
+        baseline_target_fraction=Decimal("-0.5"),
+        allow_opposite=False,
+        opposite_entry_aligned_trend_threshold=Decimal("-0.6"),
+        max_opposite_target_fraction=Decimal("0"),
+    )
+
+    result = prepare_calibrated_adaptive_inputs(
+        snapshot=_snapshot(),
+        calibrated=_market(),
+        capacity=_capacity(),
+        meta=_meta(),
+        venue=VenueGridConstraints(Decimal("0.01"), Decimal("0.01")),
+        features=features,
+        target_profile=profile,
+    )
+
+    assert result.inputs is not None
+    state, ladder = initialize_calibrated_adaptive_grid(result.inputs)
+    assert state.policy_state.target == Decimal("-0.060")
+    assert ladder
+    assert all(order.side.value == "sell" and not order.reduce_only for order in ladder)
