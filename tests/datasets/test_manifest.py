@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
+from grid_trade.datasets.audit_contracts import DatasetAuditExpectations
 from grid_trade.datasets.contracts import (
     DatasetAcceptance,
     DatasetType,
@@ -50,6 +52,29 @@ def test_manifest_serialization_is_deterministic() -> None:
     assert first.endswith(b"\n")
     assert b'"acceptance":"accepted"' in first
     assert b'"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' in first
+
+
+def test_manifest_audit_expectations_are_part_of_identity() -> None:
+    baseline = _manifest()
+    constrained = DatasetManifest(
+        instrument="BTC",
+        raw_objects=(_raw_ref(),),
+        normalization_schema_version="canonical-v1",
+        ordering_schema_version="ordering-v1",
+        audit_schema_version="audit-v1",
+        acceptance=DatasetAcceptance.ACCEPTED,
+        created_at=datetime(2026, 8, 10, tzinfo=UTC),
+        audit_expectations=DatasetAuditExpectations(
+            requested_start_ns=100,
+            requested_end_ns=200,
+            tick_size=Decimal("0.1"),
+            lot_size=Decimal("0.01"),
+            require_book_trade_overlap=True,
+        ),
+    )
+
+    assert baseline.audit_expectations == DatasetAuditExpectations()
+    assert canonical_manifest_bytes(baseline) != canonical_manifest_bytes(constrained)
 
 
 def test_manifest_requires_raw_objects_for_accepted_dataset() -> None:
