@@ -1,0 +1,76 @@
+name: Temporary Tier-2 instrument fix
+
+on:
+  push:
+    branches:
+      - agent/generalize-strategy-core
+    paths:
+      - .github/workflows/apply-tier2-instrument-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-tier2-instrument-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/generalize-strategy-core
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: python -m pip install uv==0.11.25
+      - name: Sync research environment
+        run: uv sync --extra dev --extra research --frozen
+      - name: Apply and verify Tier-2 fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/tier2-fix.b64 <<'PATCH'
+          LS0tIGEvc3JjL2dyaWRfdHJhZGUvcmVzZWFyY2gvdGllcjJfY2FsaWJyYXRlZF9jYW5kaWRhdGUucHkKKysrIGIvc3JjL2dyaWRfdHJhZGUvcmVzZWFyY2gvdGllcjJfY2FsaWJyYXRlZF9jYW5kaWRhdGUucHkKQEAgLTIzMywxMiArMjMzLDYgQEAKICkgLT4gVGllcjJDYWxpYnJhdGVkQ2FuZGlkYXRlUmVzdWx0OgogICAgIF9yZXF1aXJlX3Bvc2l0aXZlKGVxdWl0eSwgZmllbGQ9ImVxdWl0eSIpCiAgICAgX3JlcXVpcmVfZmluaXRlKHN0YXJ0aW5nX3Bvc2l0aW9uLCBmaWVsZD0ic3RhcnRpbmdfcG9zaXRpb24iKQotICAgIGlmIGNvbmZpZy5pbnN0cnVtZW50IGlzIG5vdCBOb25lOgotICAgICAgICByZXF1aXJlX2luc3RydW1lbnRzX2NvbXBhdGlibGUoCi0gICAgICAgICAgICBkYXRhc2V0Lmluc3RydW1lbnQsCi0gICAgICAgICAgICBjb25maWcuaW5zdHJ1bWVudC5pbnN0cnVtZW50X2lkLAotICAgICAgICAgICAgY29udGV4dD0iZGF0YXNldC9zcGVjIiwKLSAgICAgICAgKQogICAgIF92YWxpZGF0ZV9mcmFtZXMoZXZpZGVuY2VfZnJhbWVzKQogICAgIGFjY2VwdGVkX2V2ZW50cyA9IF9iaW5kX2F1ZGl0ZWRfZXZlbnRzKGRhdGFzZXQsIGV2ZW50cykKIApAQCAtMjQ3LDYgKzI0MSwxMiBAQAogICAgICkKICAgICBpZiBub3QgY2F1c2FsX2V2ZW50czoKICAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigibm8gY2Fub25pY2FsIGV2ZW50cyBhcmUgYXZhaWxhYmxlIGF0IHRoZSBkZWNpc2lvbiB0aW1lc3RhbXAiKQorICAgIGlmIGNvbmZpZy5pbnN0cnVtZW50IGlzIG5vdCBOb25lOgorICAgICAgICByZXF1aXJlX2luc3RydW1lbnRzX2NvbXBhdGlibGUoCisgICAgICAgICAgICBkYXRhc2V0Lmluc3RydW1lbnQsCisgICAgICAgICAgICBjb25maWcuaW5zdHJ1bWVudC5pbnN0cnVtZW50X2lkLAorICAgICAgICAgICAgY29udGV4dD0iZGF0YXNldC9zcGVjIiwKKyAgICAgICAgKQogCiAgICAgZnJhbWVzID0gdHVwbGUoCiAgICAgICAgIGZyYW1lIGZvciBmcmFtZSBpbiBldmlkZW5jZV9mcmFtZXMgaWYgZnJhbWUuYXNfb2ZfdGltZXN0YW1wX25zIDw9IGRlY2lzaW9uX2V4Y2hhbmdlX3RzX25zCmRpZmYgLS1naXQgYS9zcmMvZ3JpZF90cmFkZS9yZXNlYXJjaC90aWVyMl9yZXBsYXkvZGF0YXNldC5weSBiL3NyYy9ncmlkX3RyYWRlL3Jlc2VhcmNoL3RpZXIyX3JlcGxheS9kYXRhc2V0LnB5CmluZGV4IGZmYzA3YjYuLmQzMDY3NmUgMTAwNjQ0Ci0tLSBhL3NyYy9ncmlkX3RyYWRlL3Jlc2VhcmNoL3RpZXIyX3JlcGxheS9kYXRhc2V0LnB5CisrKyBiL3NyYy9ncmlkX3RyYWRlL3Jlc2VhcmNoL3RpZXIyX3JlcGxheS9kYXRhc2V0LnB5CkBAIC0xMTEsNiArMTExLDcgQEAgZGVmIF9tYXJrZXRfc25hcHNob3QoCiAgICAgICAgIHJlYWxpemVkX3ZvbGF0aWxpdHk9cmVhbGl6ZWRfdm9sYXRpbGl0eSwKICAgICAgICAgcG9zaXRpb25fcXVhbnRpdHk9c3RhcnRpbmdfcG9zaXRpb24sCiAgICAgICAgIHNvdXJjZV9pZD1mInRpZXIyOnttYW5pZmVzdC5kYXRhc2V0LmF1ZGl0X2RpZ2VzdH0iLAorICAgICAgICBpbnN0cnVtZW50X2lkPW1hbmlmZXN0LmRhdGFzZXQuaW5zdHJ1bWVudCwKICAgICApCiAKIApkaWZmIC0tZ2l0IGEvc3JjL2dyaWRfdHJhZGUvcmVzZWFyY2gvdGllcjJfcmVwbGF5L3J1bm5lci5weSBiL3NyYy9ncmlkX3RyYWRlL3Jlc2VhcmNoL3RpZXIyX3JlcGxheS9ydW5uZXIucHkKaW5kZXggMzJhZTQ2MS4uZTIzZGQyZiAxMDA2NDQKLS0tIGEvc3JjL2dyaWRfdHJhZGUvcmVzZWFyY2gvdGllcjJfcmVwbGF5L3J1bm5lci5weQorKysgYi9zcmMvZ3JpZF90cmFkZS9yZXNlYXJjaC90aWVyMl9yZXBsYXkvcnVubmVyLnB5CkBAIC0xLDggKzEsMTMgQEAKK2Zyb20gZGF0YWNsYXNzZXMgaW1wb3J0IHJlcGxhY2UKIGZyb20gZGVjaW1hbCBpbXBvcnQgRGVjaW1hbAogCiBmcm9tIGdyaWRfdHJhZGUuYXBwbGljYXRpb24ucGFzc2l2ZV9wb2xpY3kgaW1wb3J0IHRyYW5zaXRpb25fcGFzc2l2ZV9wb2xpY3kKIGZyb20gZ3JpZF90cmFkZS5kYXRhc2V0cy5hdWRpdCBpbXBvcnQgcmVxdWlyZV9wcm9tb3RpbmdfZGF0YXNldAogZnJvbSBncmlkX3RyYWRlLmRhdGFzZXRzLmNhbm9uaWNhbCBpbXBvcnQgQ2Fub25pY2FsQm9va1NuYXBzaG90LCBDYW5vbmljYWxFdmVudEVudmVsb3BlCitmcm9tIGdyaWRfdHJhZGUuZG9tYWluLmluc3RydW1lbnQgaW1wb3J0ICgKKyAgICBMRUdBQ1lfVU5TUEVDSUZJRURfSU5TVFJVTUVOVCwKKyAgICByZXF1aXJlX2luc3RydW1lbnRzX2NvbXBhdGlibGUsCispCiBmcm9tIGdyaWRfdHJhZGUuZG9tYWluLm9yZGVycyBpbXBvcnQgUGFzc2l2ZU9yZGVySW50ZW50CiBmcm9tIGdyaWRfdHJhZGUuZG9tYWluLnJpc2sgaW1wb3J0IFJpc2tMaW1pdHMsIFJpc2tTdGF0ZQogZnJvbSBncmlkX3RyYWRlLmV2aWRlbmNlLmxlZGdlciBpbXBvcnQgZXZpZGVuY2VfZGlnZXN0IGFzIGNvbXB1dGVfZXZpZGVuY2VfZGlnZXN0CkBAIC0zNCw2ICszOSwyNCBAQCBmcm9tIGdyaWRfdHJhZGUucmVzZWFyY2gudGllcjJfcmVwbGF5Lm1vZGVscyBpbXBvcnQgKAogKQogCiAKK2RlZiBfYmluZF9jYW5kaWRhdGVfb3JkZXJzKAorICAgIG1hbmlmZXN0OiBUaWVyMlJlcGxheU1hbmlmZXN0LAorICAgIGNhbmRpZGF0ZV9vcmRlcnM6IHR1cGxlW1Bhc3NpdmVPcmRlckludGVudCwgLi4uXSwKKykgLT4gdHVwbGVbUGFzc2l2ZU9yZGVySW50ZW50LCAuLi5dOgorICAgIGJvdW5kOiBsaXN0W1Bhc3NpdmVPcmRlckludGVudF0gPSBbXQorICAgIGZvciBvcmRlciBpbiBjYW5kaWRhdGVfb3JkZXJzOgorICAgICAgICBpZiBvcmRlci5pbnN0cnVtZW50X2lkID09IExFR0FDWV9VTlNQRUNJRklFRF9JTlNUUlVNRU5UOgorICAgICAgICAgICAgYm91bmQuYXBwZW5kKHJlcGxhY2Uob3JkZXIsIGluc3RydW1lbnRfaWQ9bWFuaWZlc3QuZGF0YXNldC5pbnN0cnVtZW50KSkKKyAgICAgICAgICAgIGNvbnRpbnVlCisgICAgICAgIHJlcXVpcmVfaW5zdHJ1bWVudHNfY29tcGF0aWJsZSgKKyAgICAgICAgICAgIG1hbmlmZXN0LmRhdGFzZXQuaW5zdHJ1bWVudCwKKyAgICAgICAgICAgIG9yZGVyLmluc3RydW1lbnRfaWQsCisgICAgICAgICAgICBjb250ZXh0PSJUaWVyLTIgY2FuZGlkYXRlL2RhdGFzZXQiLAorICAgICAgICApCisgICAgICAgIGJvdW5kLmFwcGVuZChvcmRlcikKKyAgICByZXR1cm4gdHVwbGUoYm91bmQpCisKKwogZGVmIHJ1bl90aWVyMl9yZXBsYXkoCiAgICAgKiwKICAgICBtYW5pZmVzdDogVGllcjJSZXBsYXlNYW5pZmVzdCwKQEAgLTQ1LDYgKzY4LDcgQEAgZGVmIHJ1bl90aWVyMl9yZXBsYXkoCiAgICAgcmVhbGl6ZWRfdm9sYXRpbGl0eTogRGVjaW1hbCwKICkgLT4gVGllcjJSZXBsYXlSZXN1bHQ6CiAgICAgcmVxdWlyZV9wcm9tb3RpbmdfZGF0YXNldChtYW5pZmVzdC5kYXRhc2V0KQorICAgIGNhbmRpZGF0ZV9vcmRlcnMgPSBfYmluZF9jYW5kaWRhdGVfb3JkZXJzKG1hbmlmZXN0LCBjYW5kaWRhdGVfb3JkZXJzKQogICAgIF9yZXF1aXJlX2Zpbml0ZShzdGFydGluZ19wb3NpdGlvbiwgZmllbGQ9InN0YXJ0aW5nX3Bvc2l0aW9uIikKICAgICBfcmVxdWlyZV9maW5pdGUocmVhbGl6ZWRfdm9sYXRpbGl0eSwgZmllbGQ9InJlYWxpemVkX3ZvbGF0aWxpdHkiKQogICAgIGlmIHJlYWxpemVkX3ZvbGF0aWxpdHkgPCAwOgpkaWZmIC0tZ2l0IGEvdGVzdHMvcmVzZWFyY2gvdGVzdF90aWVyMl9yZXBsYXkucHkgYi90ZXN0cy9yZXNlYXJjaC90ZXN0X3RpZXIyX3JlcGxheS5weQppbmRleCA5MmQ5ODQzLi45MzNjNzk4IDEwMDY0NAotLS0gYS90ZXN0cy9yZXNlYXJjaC90ZXN0X3RpZXIyX3JlcGxheS5weQorKysgYi90ZXN0cy9yZXNlYXJjaC90ZXN0X3RpZXIyX3JlcGxheS5weQpAQCAtMTY3LDcgKzE2NywxMiBAQCBkZWYgX2V2ZW50cygqLCBpbmNsdWRlX2Z1bmRpbmc6IGJvb2wgPSBUcnVlKSAtPiB0dXBsZVtDYW5vbmljYWxFdmVudEVudmVsb3BlLCAuLgogICAgIHJldHVybiBldmVudHMKIAogCi1kZWYgX2NhbmRpZGF0ZSgqLCBwcmljZTogc3RyID0gIjk5LjAiLCBxdWFudGl0eTogc3RyID0gIjAuMDEiKSAtPiBQYXNzaXZlT3JkZXJJbnRlbnQ6CitkZWYgX2NhbmRpZGF0ZSgKKyAgICAqLAorICAgIHByaWNlOiBzdHIgPSAiOTkuMCIsCisgICAgcXVhbnRpdHk6IHN0ciA9ICIwLjAxIiwKKyAgICBpbnN0cnVtZW50X2lkOiBzdHIgPSAiVU5TUEVDSUZJRUQiLAorKSAtPiBQYXNzaXZlT3JkZXJJbnRlbnQ6CiAgICAgcmV0dXJuIFBhc3NpdmVPcmRlckludGVudCgKICAgICAgICAgY2xpZW50X29yZGVyX2lkPSJ0aWVyMjpnMDpidXk6bDAiLAogICAgICAgICBnZW5lcmF0aW9uPTAsCkBAIC0xNzUsNiArMTgwLDcgQEAgZGVmIF9jYW5kaWRhdGUoKiwgcHJpY2U6IHN0ciA9ICI5OS4wIiwgcXVhbnRpdHk6IHN0ciA9ICIwLjAxIikgLT4gUGFzc2l2ZU9yZGVySW4KICAgICAgICAgc2lkZT1PcmRlclNpZGUuQlVZLAogICAgICAgICBwcmljZT1EZWNpbWFsKHByaWNlKSwKICAgICAgICAgcXVhbnRpdHk9RGVjaW1hbChxdWFudGl0eSksCisgICAgICAgIGluc3RydW1lbnRfaWQ9aW5zdHJ1bWVudF9pZCwKICAgICApCiAKIApAQCAtMjM5LDYgKzI0NSwxOSBAQCBkZWYgdGVzdF9ub25fYWNjZXB0ZWRfZGF0YXNldF9jYW5ub3RfZW50ZXJfcHJvbW90aW5nX3JlcGxheSgKICAgICAgICAgKQogCiAKK2RlZiB0ZXN0X2V4cGxpY2l0X2NhbmRpZGF0ZV9mcm9tX2Fub3RoZXJfaW5zdHJ1bWVudF9mYWlsc19jbG9zZWQoKSAtPiBOb25lOgorICAgIHdpdGggcHl0ZXN0LnJhaXNlcyhWYWx1ZUVycm9yLCBtYXRjaD0iVGllci0yIGNhbmRpZGF0ZS9kYXRhc2V0IGluc3RydW1lbnQgbWlzbWF0Y2giKToKKyAgICAgICAgcnVuX3RpZXIyX3JlcGxheSgKKyAgICAgICAgICAgIG1hbmlmZXN0PV9yZXBsYXlfbWFuaWZlc3QoKSwKKyAgICAgICAgICAgIGV2ZW50cz1fZXZlbnRzKCksCisgICAgICAgICAgICBjYW5kaWRhdGVfb3JkZXJzPShfY2FuZGlkYXRlKGluc3RydW1lbnRfaWQ9IkVUSCIpLCksCisgICAgICAgICAgICByaXNrX2xpbWl0cz1fcmlza19saW1pdHMoKSwKKyAgICAgICAgICAgIHJpc2tfc3RhdGU9X3Jpc2tfc3RhdGUoKSwKKyAgICAgICAgICAgIHN0YXJ0aW5nX3Bvc2l0aW9uPURlY2ltYWwoMCksCisgICAgICAgICAgICByZWFsaXplZF92b2xhdGlsaXR5PURlY2ltYWwoIjAuMDEiKSwKKyAgICAgICAgKQorCisKIGRlZiB0ZXN0X2hhcmRfcmlza19yZW1haW5zX2F1dGhvcml0YXRpdmVfYmVmb3JlX3JlcGxheSgpIC0+IE5vbmU6CiAgICAgcmVzdWx0ID0gcnVuX3RpZXIyX3JlcGxheSgKICAgICAgICAgbWFuaWZlc3Q9X3JlcGxheV9tYW5pZmVzdCgpLAo=
+          PATCH
+          base64 --decode /tmp/tier2-fix.b64 > /tmp/tier2-fix.patch
+          git apply --whitespace=error /tmp/tier2-fix.patch
+          uv run --frozen --extra dev ruff format .
+          uv run --frozen --extra dev ruff check .
+          uv run --frozen --extra dev --extra research pytest -m research -q \
+            tests/research tests/integrations
+          uv run --frozen --extra dev --extra research mypy \
+            src/grid_trade/datasets \
+            src/grid_trade/integrations/hyperliquid \
+            src/grid_trade/research/hftbacktest_adapter.py \
+            src/grid_trade/research/replay_attribution.py \
+            src/grid_trade/research/tier2_calibrated_candidate.py \
+            src/grid_trade/research/tier2_calibrated_replay.py \
+            src/grid_trade/research/tier2_replay \
+            src/grid_trade/research/tier2_fixture_runner.py \
+            tests/datasets \
+            tests/integrations/hyperliquid \
+            tests/research/test_canonical_hftbacktest_adapter.py \
+            tests/research/test_hftbacktest_pinned_limitations.py \
+            tests/research/test_replay_attribution.py \
+            tests/research/test_replay_visibility_attribution.py \
+            tests/research/test_tier2_audit_policy_propagation.py \
+            tests/research/test_tier2_calibrated_candidate.py \
+            tests/research/test_tier2_causality.py \
+            tests/research/test_tier2_funding_completeness.py \
+            tests/research/test_tier2_replay.py \
+            tests/research/test_tier2_replay_determinism.py \
+            tests/research/test_tier2_visibility_boundary.py
+          git diff --check
+      - name: Commit verified Tier-2 fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git commit -m "fix: preserve Tier-2 instrument and validation ordering"
+          git push origin HEAD:agent/generalize-strategy-core
