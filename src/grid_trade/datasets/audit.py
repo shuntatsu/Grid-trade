@@ -6,7 +6,9 @@ from hashlib import sha256
 from itertools import pairwise
 from typing import Any
 
+from grid_trade.datasets.audit_contracts import DatasetAuditExpectations
 from grid_trade.datasets.canonical import (
+    CanonicalBookSnapshot,
     CanonicalEventEnvelope,
     CanonicalEventType,
     CanonicalFundingReference,
@@ -51,6 +53,16 @@ class DatasetAuditReport:
     event_count: int
     exact_duplicate_count: int
     conflicting_duplicate_count: int
+    expectations: DatasetAuditExpectations = DatasetAuditExpectations()
+    observed_start_ns: int | None = None
+    observed_end_ns: int | None = None
+    book_start_ns: int | None = None
+    book_end_ns: int | None = None
+    trade_start_ns: int | None = None
+    trade_end_ns: int | None = None
+    book_trade_overlap_ns: int = 0
+    max_exchange_gap_ns: int = 0
+    p95_exchange_gap_ns: int = 0
     required_funding_timestamps_ns: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
@@ -58,15 +70,36 @@ class DatasetAuditReport:
             self.event_count,
             self.exact_duplicate_count,
             self.conflicting_duplicate_count,
+            self.book_trade_overlap_ns,
+            self.max_exchange_gap_ns,
+            self.p95_exchange_gap_ns,
         ):
             if value < 0:
-                raise ValueError("audit counters must be non-negative")
+                raise ValueError("audit counters and statistics must be non-negative")
+        for value in (
+            self.observed_start_ns,
+            self.observed_end_ns,
+            self.book_start_ns,
+            self.book_end_ns,
+            self.trade_start_ns,
+            self.trade_end_ns,
+        ):
+            if value is not None and value < 0:
+                raise ValueError("audit timestamps must be non-negative")
         if any(timestamp < 0 for timestamp in self.required_funding_timestamps_ns):
             raise ValueError("required funding timestamps must be non-negative")
         if self.required_funding_timestamps_ns != tuple(
             sorted(set(self.required_funding_timestamps_ns))
         ):
             raise ValueError("required funding timestamps must be sorted and unique")
+
+    @property
+    def requested_start_ns(self) -> int | None:
+        return self.expectations.requested_start_ns
+
+    @property
+    def requested_end_ns(self) -> int | None:
+        return self.expectations.requested_end_ns
 
 
 def _canonical_value(value: object) -> Any:
@@ -109,6 +142,98 @@ def _acceptance(findings: tuple[AuditFinding, ...]) -> DatasetAcceptance:
     return DatasetAcceptance.ACCEPTED
 
 
+def _range(
+    events: tuple[CanonicalEventEnvelope, ...],
+    event_type: CanonicalEventType | None = None,
+) -> tuple[int | None, int | None]:
+    timestamps = tuple(
+        event.exchange_ts_ns
+        for event in events
+        if event_type is None or event.event_type is event_type
+    )
+    if not timestamps:
+        return None, None
+    return min(timestamps), max(timestamps)
+
+
+def _book_trade_overlap_ns(
+    *,
+    book_start_ns: int | None,
+    book_end_ns: int | None,
+    trade_start_ns: int | None,
+    trade_end_ns: int | None,
+) -> int:
+    if None in (book_start_ns, book_end_ns, trade_start_ns, trade_end_ns):
+        return 0
+    assert book_start_ns is not None
+    assert book_end_ns is not None
+    assert trade_start_ns is not None
+    assert trade_end_ns is not None
+    return max(0, min(book_end_ns, trade_end_ns) - max(book_start_ns, trade_start_ns))
+
+
+def _gap_statistics(events: tuple[CanonicalEventEnvelope, ...]) -> tuple[int, int]:
+    timestamps = sorted(event.exchange_ts_ns for event in events)
+    gaps = sorted(current - previous for previous, current in pairwise(timestamps))
+    if not gaps:
+        return 0, 0
+    nearest_rank_index = max(0, (95 * len(gaps) + 99) // 100 - 1)
+    return gaps[-1], gaps[nearest_rank_index]
+
+
+def _aligned(value: Decimal, step: Decimal) -> bool:
+    return value % step == 0
+
+
+def _alignment_findings(
+    events: tuple[CanonicalEventEnvelope, ...],
+    expectations: DatasetAuditExpectations,
+) -> tuple[AuditFinding, ...]:
+    findings: list[AuditFinding] = []
+    for index, event in enumerate(events):
+        prices: tuple[Decimal, ...] = ()
+        quantities: tuple[Decimal, ...] = ()
+        if event.event_type is CanonicalEventType.BOOK_SNAPSHOT:
+            book = event.payload
+            if not isinstance(book, CanonicalBookSnapshot):
+                raise TypeError("validated book event must carry CanonicalBookSnapshot payload")
+            levels = (*book.bids, *book.asks)
+            prices = tuple(level.price for level in levels)
+            quantities = tuple(level.quantity for level in levels)
+        elif event.event_type is CanonicalEventType.TRADE:
+            trade = event.payload
+            if not isinstance(trade, CanonicalTrade):
+                raise TypeError("validated trade event must carry CanonicalTrade payload")
+            prices = (trade.price,)
+            quantities = (trade.quantity,)
+
+        if expectations.tick_size is not None and any(
+            not _aligned(price, expectations.tick_size) for price in prices
+        ):
+            findings.append(
+                AuditFinding(
+                    code="tick_alignment_violation",
+                    severity=AuditSeverity.ERROR,
+                    message="book/trade price is not aligned to the declared tick size",
+                    event_index=index,
+                    exchange_ts_ns=event.exchange_ts_ns,
+                )
+            )
+        if expectations.lot_size is not None and any(
+            not _aligned(quantity, expectations.lot_size) for quantity in quantities
+        ):
+            findings.append(
+                AuditFinding(
+                    code="lot_alignment_violation",
+                    severity=AuditSeverity.ERROR,
+                    message="book/trade quantity is not aligned to the declared lot size",
+                    event_index=index,
+                    exchange_ts_ns=event.exchange_ts_ns,
+                )
+            )
+    return tuple(findings)
+
+
 def audit_canonical_dataset(
     events: tuple[CanonicalEventEnvelope, ...],
     *,
@@ -116,12 +241,14 @@ def audit_canonical_dataset(
     required_funding_timestamps_ns: tuple[int, ...] = (),
     warning_gap_ns: int | None = None,
     expected_normalization_schema_version: str | None = None,
+    expectations: DatasetAuditExpectations | None = None,
 ) -> DatasetAuditReport:
     if warning_gap_ns is not None and warning_gap_ns <= 0:
         raise ValueError("warning_gap_ns must be positive")
     if any(timestamp < 0 for timestamp in required_funding_timestamps_ns):
         raise ValueError("required funding timestamps must be non-negative")
     normalized_required_funding = tuple(sorted(set(required_funding_timestamps_ns)))
+    audit_expectations = expectations or DatasetAuditExpectations()
 
     findings: list[AuditFinding] = []
     accepted_events: list[CanonicalEventEnvelope] = []
@@ -200,9 +327,53 @@ def audit_canonical_dataset(
 
         accepted_events.append(event)
 
+    frozen_accepted_events = tuple(accepted_events)
+    findings.extend(_alignment_findings(frozen_accepted_events, audit_expectations))
+
+    observed_start_ns, observed_end_ns = _range(frozen_accepted_events)
+    book_start_ns, book_end_ns = _range(
+        frozen_accepted_events,
+        CanonicalEventType.BOOK_SNAPSHOT,
+    )
+    trade_start_ns, trade_end_ns = _range(
+        frozen_accepted_events,
+        CanonicalEventType.TRADE,
+    )
+    overlap_ns = _book_trade_overlap_ns(
+        book_start_ns=book_start_ns,
+        book_end_ns=book_end_ns,
+        trade_start_ns=trade_start_ns,
+        trade_end_ns=trade_end_ns,
+    )
+    max_gap_ns, p95_gap_ns = _gap_statistics(frozen_accepted_events)
+
+    if (
+        audit_expectations.requested_start_ns is not None
+        and (observed_start_ns is None or observed_start_ns > audit_expectations.requested_start_ns)
+    ) or (
+        audit_expectations.requested_end_ns is not None
+        and (observed_end_ns is None or observed_end_ns < audit_expectations.requested_end_ns)
+    ):
+        findings.append(
+            AuditFinding(
+                code="requested_coverage_missing",
+                severity=AuditSeverity.ERROR,
+                message="observed event coverage does not span the requested dataset range",
+            )
+        )
+
+    if audit_expectations.require_book_trade_overlap and overlap_ns <= 0:
+        findings.append(
+            AuditFinding(
+                code="book_trade_overlap_missing",
+                severity=AuditSeverity.ERROR,
+                message="book and trade observations do not have positive temporal overlap",
+            )
+        )
+
     funding_timestamps = {
         event.exchange_ts_ns
-        for event in accepted_events
+        for event in frozen_accepted_events
         if event.event_type is CanonicalEventType.FUNDING_REFERENCE
         and isinstance(event.payload, CanonicalFundingReference)
         and event.payload.funding_rate is not None
@@ -220,7 +391,7 @@ def audit_canonical_dataset(
             )
 
     if warning_gap_ns is not None:
-        for previous_event, current_event in pairwise(accepted_events):
+        for previous_event, current_event in pairwise(frozen_accepted_events):
             gap_ns = current_event.exchange_ts_ns - previous_event.exchange_ts_ns
             if gap_ns > warning_gap_ns:
                 findings.append(
@@ -236,10 +407,20 @@ def audit_canonical_dataset(
     return DatasetAuditReport(
         acceptance=_acceptance(frozen_findings),
         findings=frozen_findings,
-        accepted_events=tuple(accepted_events),
+        accepted_events=frozen_accepted_events,
         event_count=len(events),
         exact_duplicate_count=exact_duplicate_count,
         conflicting_duplicate_count=conflicting_duplicate_count,
+        expectations=audit_expectations,
+        observed_start_ns=observed_start_ns,
+        observed_end_ns=observed_end_ns,
+        book_start_ns=book_start_ns,
+        book_end_ns=book_end_ns,
+        trade_start_ns=trade_start_ns,
+        trade_end_ns=trade_end_ns,
+        book_trade_overlap_ns=overlap_ns,
+        max_exchange_gap_ns=max_gap_ns,
+        p95_exchange_gap_ns=p95_gap_ns,
         required_funding_timestamps_ns=normalized_required_funding,
     )
 
@@ -265,6 +446,7 @@ def require_promoting_dataset(dataset_manifest: DatasetManifest) -> None:
 __all__ = [
     "AuditFinding",
     "AuditSeverity",
+    "DatasetAuditExpectations",
     "DatasetAuditReport",
     "audit_canonical_dataset",
     "audit_report_digest",
