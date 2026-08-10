@@ -76,10 +76,9 @@ class InstrumentSpec:
         if not isinstance(quantity, Decimal) or not quantity.is_finite() or quantity < 0:
             raise ValueError("quantity must be a finite non-negative Decimal")
         with deterministic_decimal_context():
-            return (
-                (quantity / self.quantity_step).to_integral_value(rounding=ROUND_FLOOR)
-                * self.quantity_step
-            )
+            return (quantity / self.quantity_step).to_integral_value(
+                rounding=ROUND_FLOOR
+            ) * self.quantity_step
 
     def notional(self, quantity: Decimal, price: Decimal) -> Decimal:
         if not isinstance(quantity, Decimal) or not quantity.is_finite():
