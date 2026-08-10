@@ -80,8 +80,7 @@ def _filter_passive_orders(
     for order in orders:
         if order.reduce_only:
             valid_side = (
-                required_reduce_only_side is not None
-                and order.side is required_reduce_only_side
+                required_reduce_only_side is not None and order.side is required_reduce_only_side
             )
             valid_quantity = order.quantity <= remaining_reduce_only_capacity
             if not valid_side or not valid_quantity:
