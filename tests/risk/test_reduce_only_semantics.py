@@ -155,6 +155,25 @@ def test_multiple_reduce_only_orders_may_exactly_flatten_position() -> None:
     assert decision.allow_new_risk
 
 
+def test_short_position_may_be_exactly_flattened_by_buy_reduce_only() -> None:
+    order = _order(
+        order_id="short-reduce",
+        side=OrderSide.BUY,
+        quantity="1",
+        reduce_only=True,
+    )
+
+    decision, filtered = assess_passive_ladder_risk(
+        _snapshot("-1"),
+        _limits(),
+        _state(),
+        (order,),
+    )
+
+    assert filtered == (order,)
+    assert decision.allow_new_risk
+
+
 def test_new_risk_orders_do_not_expand_reduce_only_capacity() -> None:
     orders = (
         _order(
