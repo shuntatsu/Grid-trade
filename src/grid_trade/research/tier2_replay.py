@@ -94,6 +94,19 @@ def _datetime_from_ns(timestamp_ns: int) -> datetime:
     return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=remainder_ns // 1_000)
 
 
+def required_hourly_funding_timestamps(
+    events: tuple[CanonicalEventEnvelope, ...],
+) -> tuple[int, ...]:
+    if not events:
+        return ()
+    start_ns = min(event.exchange_ts_ns for event in events)
+    end_ns = max(event.exchange_ts_ns for event in events)
+    first_boundary_ns = ((start_ns + _HOUR_NS - 1) // _HOUR_NS) * _HOUR_NS
+    if first_boundary_ns > end_ns:
+        return ()
+    return tuple(range(first_boundary_ns, end_ns + 1, _HOUR_NS))
+
+
 @dataclass(frozen=True, slots=True)
 class Tier2ReplayManifest:
     dataset: DatasetManifest
@@ -170,10 +183,15 @@ def _validated_audit_events(
     manifest: Tier2ReplayManifest,
     events: tuple[CanonicalEventEnvelope, ...],
 ) -> tuple[CanonicalEventEnvelope, ...]:
+    required_funding = required_hourly_funding_timestamps(events)
+    if manifest.dataset.required_funding_timestamps_ns != required_funding:
+        raise ValueError("DatasetManifest hourly funding requirements do not match replay extent")
     report = audit_canonical_dataset(
         events,
         raw_objects=manifest.dataset.raw_objects,
+        required_funding_timestamps_ns=manifest.dataset.required_funding_timestamps_ns,
         expected_normalization_schema_version=manifest.dataset.normalization_schema_version,
+        expectations=manifest.dataset.audit_expectations,
     )
     actual_digest = audit_report_digest(report)
     if actual_digest != manifest.dataset.audit_digest:
@@ -741,4 +759,9 @@ def run_tier2_replay(
     )
 
 
-__all__ = ["Tier2ReplayManifest", "Tier2ReplayResult", "run_tier2_replay"]
+__all__ = [
+    "Tier2ReplayManifest",
+    "Tier2ReplayResult",
+    "required_hourly_funding_timestamps",
+    "run_tier2_replay",
+]
